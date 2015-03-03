@@ -12,5 +12,6 @@
 *.pdf -crlf -diff -merge
 *.jpg -crlf -diff -merge
 *.png -crlf -diff -merge
+*.fits -crlf -diff -merge
 *.zmx -crlf -diff -merge
 *.ZMX -crlf -diff -merge
