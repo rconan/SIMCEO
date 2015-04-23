@@ -1,7 +1,12 @@
 *.o
 *.so
+*.mexa64
+*.aux
+*.log
+*.out
 *.a
 *~
 #*#
 *.dSYM
 ._*
+*.original
