@@ -5,3 +5,4 @@
 #*#
 *.dSYM
 ._*
+.DS_Store
