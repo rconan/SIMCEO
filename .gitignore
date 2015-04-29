@@ -9,4 +9,5 @@
 #*#
 *.dSYM
 ._*
+.DS_Store
 *.original
