@@ -1,8 +1,13 @@
 *.o
 *.so
+*.mexa64
+*.aux
+*.log
+*.out
 *.a
 *~
 #*#
 *.dSYM
 ._*
 .DS_Store
+*.original

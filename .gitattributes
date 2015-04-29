@@ -15,3 +15,4 @@
 *.fits -crlf -diff -merge
 *.zmx -crlf -diff -merge
 *.ZMX -crlf -diff -merge
+*.ipynb -crlf -diff -merge
