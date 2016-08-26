@@ -2,30 +2,30 @@ NOWEBPATH	= /usr
 WEAVE   	= $(NOWEBPATH)/bin/noweave
 TANGLE    	= $(NOWEBPATH)/bin/notangle
 
-all: python matlab maskdoc
-python: simulink.nw simulink.py
-matlab: simulink.nw
+all: python matlab doc
+python: simceo.nw simceo.py
+	mkdir -p calibration_dbs
+matlab: simceo.nw maskdoc
 	mkdir -p +ceo
-	$(TANGLE) -Rbroker.m simulink.nw > +ceo/broker.m
-	$(TANGLE) -Rmessages.m simulink.nw > +ceo/messages.m
-	$(TANGLE) -RSCEO.m simulink.nw > SCEO.m
-maskdoc: simulink.nw
+	$(TANGLE) -Rbroker.m simceo.nw > +ceo/broker.m
+	$(TANGLE) -Rmessages.m simceo.nw > +ceo/messages.m
+	$(TANGLE) -RSCEO.m simceo.nw > SCEO.m
+maskdoc: simceo.nw
 	mkdir -p masks
-	$(TANGLE) -ROpticalPath.md simulink.nw > masks/OpticalPath.md
-	$(TANGLE) -RGMTMirror.md simulink.nw > masks/GMTMirror.md
+	$(TANGLE) -ROpticalPath.md simceo.nw > masks/OpticalPath.md
+	$(TANGLE) -RGMTMirror.md simceo.nw > masks/GMTMirror.md
 	make -C masks all
-server: simulink.nw
+server: simceo.nw
 	mkdir -p etc
-	$(TANGLE) -RCEO.sh simulink.nw > etc/.CEO.sh
-	$(TANGLE) -Rceo\\_server simulink.nw > etc/.ceo_server
+	$(TANGLE) -RCEO.sh simceo.nw > etc/.CEO.sh
+	$(TANGLE) -Rceo\\_server simceo.nw > etc/.ceo_server
 	make -C etc/ all
 
-doc: simulink.nw simulink.tex
-	mv simulink.tex doc/simceo.tex
+doc: simceo.nw simceo.tex
 	make -C doc/ all
 
 zip: matlab maskdoc doc
-	zip -r simceo.zip +ceo/* CEO.slx doc/simceo_refman.pdf etc/gmto* jsonlab/* matlab-zmq/* masks/*.html masks/*.css optical_path.slx SCEO.m slblocks.m
+	zip -r simceo.zip +ceo/* doc/simceo_refman.pdf etc/gmto.control.credentials.csv  jsonlab/* matlab-zmq/* masks/*.html masks/*.css models/* CEO.slx SCEO.m slblocks.m simceo.nw
 
 ipython:
 	env LD_LIBRARY_PATH=/usr/local/cuda/lib64 PYTHONPATH=/home/ubuntu/CEO/python ipython
@@ -33,7 +33,7 @@ ipython:
 .SUFFIXES: .nw .tex .py .m
 
 .nw.tex:
-	$(WEAVE) -delay -index $< > $@
+	$(WEAVE) -delay -index $< > doc/$@
 
 .nw.py:
 	$(TANGLE) -R$@ $< > $@
