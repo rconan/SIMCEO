@@ -24,7 +24,7 @@ doc: simulink.nw simulink.tex
 	mv simulink.tex doc/simceo.tex
 	make -C doc/ all
 
-zip:
+zip: matlab maskdoc doc
 	zip -r simceo.zip +ceo/* CEO.slx doc/simceo_refman.pdf etc/gmto* jsonlab/* matlab-zmq/* masks/*.html masks/*.css optical_path.slx SCEO.m slblocks.m
 
 ipython:
