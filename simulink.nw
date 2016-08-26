@@ -83,6 +83,8 @@ from collections import OrderedDict
 import os
 import shelve
 
+SIMCEOPATH = '/home/ubuntu/Dropbox/gmt_sim/gmt_dos/modules/plant/ceo'
+
 class Timer(object):
     def __init__(self, name=None):
         self.name = name
@@ -540,8 +542,8 @@ The message that triggers a call to the \emph{InitializeConditions} method is
             #import scipy.io.matlab as matlab
             #print kwargs
             if calibration_file is not None:
-                db = shelve.open("calibration_dbs/"+calibration_file)
-                if os.path.isfile("calibration_dbs/"+calibration_file+".dir"):
+                db = shelve.open(SIMCEOPATH+"/calibration_dbs/"+calibration_file)
+                if os.path.isfile(SIMCEOPATH+"/calibration_dbs/"+calibration_file+".dir"):
                     print " . Loading command matrix from existing database %s!"%calibration_file
                     for key in db:
                         C = db[key]
@@ -550,7 +552,7 @@ The message that triggers a call to the \emph{InitializeConditions} method is
                         db[key] = C
                     db.close()
                     return
-                #db = shelve.open("calibration_dbs/"+calibration_file)
+                #db = shelve.open(SIMCEOPATH+"/calibration_dbs/"+calibration_file)
             with Timer():
                 for key in calibrations: # Through calibrations
                     calibs = calibrations[key]
@@ -684,7 +686,7 @@ function self = broker(varargin)
     self.awspath     = p.Results.awspath;
     self.instance_id = p.Results.instance_id;
     <<broker client: AWS CLI path>>
-    self.AMI_ID = 'ami-b07735d0';
+    self.AMI_ID = 'ami-bc2b66dc';
     <<broker client: AWS instance launch>>
     self.ctx    = zmq.core.ctx_new();
     self.socket = zmq.core.socket(self.ctx, 'ZMQ_REQ');
