@@ -72,7 +72,7 @@ The messages exchanged between the client and the server are formatted according
 
 
 The python interface consists in the module \emph{simulink}:
-<<simulink.py>>=
+<<simceo.py>>=
 import threading
 import time
 import zmq
