@@ -686,7 +686,7 @@ function self = broker(varargin)
     self.awspath     = p.Results.awspath;
     self.instance_id = p.Results.instance_id;
     <<broker client: AWS CLI path>>
-    self.AMI_ID = 'ami-bc2b66dc';
+    self.AMI_ID = 'ami-7e34791e';
     <<broker client: AWS instance launch>>
     self.ctx    = zmq.core.ctx_new();
     self.socket = zmq.core.socket(self.ctx, 'ZMQ_REQ');
