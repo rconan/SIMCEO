@@ -1,0 +1,26 @@
+\documentclass{article}
+
+\usepackage{noweb}
+\usepackage[pdftex,bookmarks,colorlinks,linkcolor=blue,citecolor=blue]{hyperref}
+
+\usepackage{tikz}
+\usetikzlibrary{positioning, shapes.multipart,arrows.meta, calc}
+\pgfdeclarelayer{background}
+\pgfdeclarelayer{foreground}
+\pgfsetlayers{background,main,foreground}   %% some additional layers for demo
+
+\setcounter{tocdepth}{4}
+\setcounter{secnumdepth}{3}
+
+\begin{document}
+
+\title{{\Huge \textbf{SIMCEO}}\\Simulink Client\\CEO Server}
+\author{R. Conan\\\bf GMTO Corporation}
+\date{\today}
+\maketitle
+
+\tableofcontents
+
+\input{simceo.tex}
+
+\end{document}
