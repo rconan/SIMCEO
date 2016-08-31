@@ -2,7 +2,7 @@
 \section{Introduction}
 \label{sec:introduction}
 
-This documents describes SIMCEO, a interface between CEO and Simulink.
+This documents describes SIMCEO, an interface between CEO and Simulink.
 SIMCEO allows to seamlessly integrates CEO functionalities into a Simulink model.
 A Simulink library, \emph{CEO}, provides a set of blocks that are used to instantiate CEO objects.
 The blocks either send data to the CEO objects updating the state of these objects, or query data from the CEO objects.
@@ -22,7 +22,7 @@ In addition to Matlab and Simulink, the client relies of aws cli, ZeroMQ and UBJ
 
 The AWS command line interface (\texttt{aws cli}) allows to launch/terminate and to start/stop the AWS instances where the SIMCEO server resides.
 To install it, follows the instructions at \\ \url{http://docs.aws.amazon.com/cli/latest/userguide/installing.html} \\
-Once installed, open a terminal and at the shell prompt enter: \\\texttt{>> aws configure --profile gmto.control}\\ and answers the questions using the \texttt{gmto.control.credentials} file in the \texttt{etc/} directory.
+Once installed, open a terminal and at the shell prompt enter: \\\texttt{>> aws configure --profile gmto.control}\\ and answers the questions using the \texttt{gmto.control.credentials} file provided separately.
 
 \subsection{Matlab--ZMQ}
 \label{sec:zeromq}
@@ -736,6 +736,10 @@ end
 @
 \subsubsection{run\_instance}
 \label{sec:run_instance}
+
+A new AWS instance is ran from an existing AMI.
+The instance is launched using the AWS cli.
+The AWS cli paramter
  
 <<launch AWS AMI>>=
 function run_instance(self)
