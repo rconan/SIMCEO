@@ -736,6 +736,7 @@ end
 If no instance ID is set in the \texttt{simceo.json} configuration file, a new instance is created from the AMI whose ID is given in \texttt{etc/ec2runinst.json} file. 
 <<launch AWS AMI>>=
 function run_instance(self)
+    self.instance_end_state = 'terminate';
     <<launching an instance>>
     <<waiting for the running state>>
     <<waiting for initialization>>
@@ -749,7 +750,7 @@ The sequence of operations is:
 <<launching an instance>>=
 cmd = sprintf(['%s ec2 run-instances --profile gmto.control ',...
                '--cli-input-json file://%s'],...
-              self.awspath, fullfile(self.etc,'ec2runinst.json'))
+              self.awspath, fullfile(self.etc,'ec2runinst.json'));
 [status,instance_json] = system(cmd);
 if status~=0
     error('Launching AWS AMI %s failed!',self.AMI_ID')
@@ -765,7 +766,7 @@ fprintf('(This usually takes a few minutes!)\n')
 tic
 cmd = sprintf(['%s ec2 wait instance-status-ok --instance-ids %s ',...
                '--profile gmto.control'],...
-              self.awspath,self.instance_id)
+              self.awspath,self.instance_id);
 [status,~] = system(cmd);
 toc
 if status~=0
@@ -780,7 +781,7 @@ cmd = sprintf(['%s cloudwatch put-metric-alarm ',...
                '--cli-input-json file://%s'],...
               self.awspath,...
               self.instance_id,...
-              fullfile(self.etc,'cloudwatch.json'))
+              fullfile(self.etc,'cloudwatch.json'));
 [status,~] = system(cmd);
 if status~=0
     error('Setting alarm for AWS machine %s failed!',self.instance_id')
@@ -811,6 +812,7 @@ end
 If an instance ID has been set in the \texttt{simceo.json} configuration file, this instance is started.
 <<start AWS instance>>=
 function start_instance(self)
+    self.instance_end_state = 'stop';
     <<starting an instance>>
     <<waiting for the running state>>
     <<getting the public IP>>
@@ -824,7 +826,7 @@ cmd = sprintf(['%s ec2 start-instances --instance-ids %s',...
                ' --profile gmto.control'],...
               self.awspath,self.instance_id);
 fprintf('%s\n',cmd)
-fprintf('@(broker)> Starting AWS machine %s...',self.instance_id)
+fprintf('@(broker)> Starting AWS machine %s...\n',self.instance_id)
 [status,~] = system(cmd);
 if status~=0
     error('Starting AWS machine %s failed!',self.instance_id')
