@@ -646,6 +646,7 @@ classdef (Sealed=true) broker < handle
     end
     
     properties (Access=private)
+        etc
         instance_end_state
         ctx
         socket
@@ -679,18 +680,13 @@ The Matlab broker class starts an AWS machine and sets--up the ZeroMQ connection
 The 
 <<broker client>>=
 function self = broker(varargin)
-    p = inputParser;
-    addParameter(p,'awspath','')
-    addParameter(p,'instance_id','')
-    parse(p, varargin{:} )
-    self.awspath     = p.Results.awspath;
-    self.instance_id = p.Results.instance_id;
-    <<broker client: AWS CLI path>>
-    self.AMI_ID = 'ami-7e34791e';
+    currentpath = mfilename('fullpath');
+    k = strfind(currentpath,filesep);
+    self.etc = fullfile(currentpath(1:k(end)),'..','etc');
+    cfg = loadjson(fullfile(self.etc,'simceo.json'));
+    self.awspath         = cfg.awsclipath;
+    self.instance_id     = cfg.aws_instance_id;
     <<broker client: AWS instance launch>>
-    self.ctx    = zmq.core.ctx_new();
-    self.socket = zmq.core.socket(self.ctx, 'ZMQ_REQ');
-    self.zmqReset = true;
 end
 @ 
 If not argument is passed to the constructor, the routine selects the path to AWS CLI command \texttt{aws} based on the nature of the client OS.
@@ -737,61 +733,65 @@ end
 \subsubsection{run\_instance}
 \label{sec:run_instance}
 
-A new AWS instance is ran from an existing AMI.
-The instance is launched using the AWS cli.
-The AWS cli paramter
- 
+If no instance ID is set in the \texttt{simceo.json} configuration file, a new instance is created from the AMI whose ID is given in \texttt{etc/ec2runinst.json} file. 
 <<launch AWS AMI>>=
 function run_instance(self)
-    cd('etc')
-    [status,instance_json] = system(sprintf(['%s ec2 run-instances --image-id %s --count 1',...
-                        ' --instance-type g2.2xlarge --key-name gmtocontrol.pem',...
-                        ' --security-groups launch-wizard-2 --profile gmto.control'],...
-                                       self.awspath, self.AMI_ID));
-    if status~=0
-        error('Launching AWS AMI %s failed!',self.AMI_ID')
-    end
-    cd('..')
-    instance = loadjson(instance_json);
-    self.instance_id = instance.Instances{1}(1).InstanceId;
-    fprintf('>>>> WAITING FOR AWS INSTANCE %s TO START ... \n',self.instance_id)
-    tic
-    [status,~] = system(sprintf('%s ec2 wait instance-running --instance-ids %s --profile gmto.control',...
-                                self.awspath,self.instance_id));
-    toc
-    if status~=0
-        error('Starting AWS machine %s failed!',self.instance_id')
-    end
-    fprintf('>>>> WAITING FOR AWS INSTANCE %s TO INITIALIZE ... (This usually takes a few minutes!)\n',self.instance_id)
-    tic
-    [status,~] = system(sprintf('%s ec2 wait instance-status-ok --instance-ids %s --profile gmto.control',...
-                                self.awspath,self.instance_id));
-    toc
-    if status~=0
-        error('Starting AWS machine %s failed!',self.instance_id')
-    end
-    [status,~] = system(sprintf([...
-        '%s cloudwatch put-metric-alarm --alarm-name CEO-SERVER-FAILSAFE',...
-        ' --alarm-description "Terminate the instance when it is idle for 4 hours"',...
-        ' --namespace "AWS/EC2" --dimensions Name=InstanceId,Value="%s"',...
-        ' --statistic Average --metric-name CPUUtilization',...
-        ' --comparison-operator LessThanThreshold --threshold 10 --period 3600',...
-        ' --evaluation-periods 4 --alarm-actions arn:aws:automate:us-west-1:ec2:terminate --profile gmto.control'],...
-                                         self.awspath,self.instance_id));
-    if status~=0
-        error('Setting alarm for AWS machine %s failed!',self.instance_id')
-    end
-    [status,public_ip_] = system(sprintf(['%s ec2 describe-instances --instance-ids %s',...
-                        ' --output text',...
-                        ' --query Reservations[*].Instances[*].PublicIpAddress --profile gmto.control'],...
-                                    self.awspath, self.instance_id));    
-    if status~=0
-        error('Getting AWS machine public IP failed!')
-    end
-    self.public_ip = strtrim(public_ip_);
-    fprintf('\n ==>> machine is up and running @%s\n',self.public_ip)
+    <<launching an instance>>
+    <<waiting for the running state>>
+    <<waiting for initialization>>
+    <<setting up cloudwatch>>
+    <<getting the public IP>>    
 end
 @ 
+The sequence of operations is:
+\begin{enumerate}
+\item launching the instance,
+<<launching an instance>>=
+cmd = sprintf(['%s ec2 run-instances --profile gmto.control ',...
+               '--cli-input-json file://%s'],...
+              self.awspath, fullfile(self.etc,'ec2runinst.json'))
+[status,instance_json] = system(cmd);
+if status~=0
+    error('Launching AWS AMI %s failed!',self.AMI_ID')
+end
+instance = loadjson(instance_json);
+self.instance_id = instance.Instances{1}(1).InstanceId;
+@ 
+\item waiting for the confirmation that the instance is running,
+\item waiting for the confirmation that the instance has finished to initialize,
+<<waiting for initialization>>=
+fprintf('>>>> WAITING FOR AWS INSTANCE %s TO INITIALIZE ... \n',self.instance_id)
+fprintf('(This usually takes a few minutes!)\n')
+tic
+cmd = sprintf(['%s ec2 wait instance-status-ok --instance-ids %s ',...
+               '--profile gmto.control'],...
+              self.awspath,self.instance_id)
+[status,~] = system(cmd);
+toc
+if status~=0
+    error('Starting AWS machine %s failed!',self.instance_id')
+end
+@ 
+\item setting up an alarm that terminates an instance idle for man than 4hours,
+<<setting up cloudwatch>>=
+cmd = sprintf(['%s cloudwatch put-metric-alarm ',...
+               '--profile gmto.control ',...
+               '--dimensions Name=InstanceId,Value=%s ',...
+               '--cli-input-json file://%s'],...
+              self.awspath,...
+              self.instance_id,...
+              fullfile(self.etc,'cloudwatch.json'))
+[status,~] = system(cmd);
+if status~=0
+    error('Setting alarm for AWS machine %s failed!',self.instance_id')
+end
+@ 
+\item getting the public IP of the instance.
+\end{enumerate}
+@
+\subsubsection{terminate\_instance}
+\label{sec:terminate_instance}
+
 <<terminate AWS instance>>=
 function terminate_instance(self)
     if strcmp(self.instance_end_state,'terminate')
@@ -804,36 +804,58 @@ function terminate_instance(self)
         end
     end
 end
-@ 
-The AWS command line interface must be installed and the instance ID must be provided: 
+@
+\subsubsection{start\_instance}
+\label{sec:start_instance}
+
+If an instance ID has been set in the \texttt{simceo.json} configuration file, this instance is started.
 <<start AWS instance>>=
 function start_instance(self)
-% AWS machine instance ID:
-% self.instance_id = 'i-063bf1d3bf97020e5';
-    fprintf('@(broker)> Starting AWS machine %s...',self.instance_id)
-    [status,~] = system(sprintf(['%s ec2 start-instances --instance-ids %s',...
-                        ' --profile gmto.control'],...
-                                self.awspath,self.instance_id));
-    if status~=0
-        error('Starting AWS machine %s failed!',self.instance_id')
-    end
-    [status,~] = system(sprintf(['%s ec2 wait instance-running --instance-ids %s',...
-                        ' --profile gmto.control'],...
-                                self.awspath,self.instance_id));
-    if status~=0
-        error('Starting AWS machine %s failed!',self.instance_id')
-    end
-    [status,public_ip_] = system(sprintf(['%s ec2 describe-instances --instance-ids %s',...
-                        ' --output text',...
-                        ' --query Reservations[*].Instances[*].PublicIpAddress',...
-                        ' --profile gmto.control'],...
-                                         self.awspath,self.instance_id));
-    if status~=0
-        error('Getting AWS machine public IP failed!')
-    end
-    self.public_ip = strtrim(public_ip_);
-    fprintf('\n ==>> machine is up and running @%s\n',self.public_ip)
+    <<starting an instance>>
+    <<waiting for the running state>>
+    <<getting the public IP>>
 end
+@
+The sequence of operations is:
+\begin{enumerate}
+\item starting the instance:
+<<starting an instance>>=
+cmd = sprintf(['%s ec2 start-instances --instance-ids %s',...
+               ' --profile gmto.control'],...
+              self.awspath,self.instance_id);
+fprintf('%s\n',cmd)
+fprintf('@(broker)> Starting AWS machine %s...',self.instance_id)
+[status,~] = system(cmd);
+if status~=0
+    error('Starting AWS machine %s failed!',self.instance_id')
+end
+@ 
+\item waiting for the confirmation that the instance is running
+<<waiting for the running state>>=
+fprintf('>>>> WAITING FOR AWS INSTANCE %s TO START ... \n',self.instance_id)
+tic
+[status,~] = system(sprintf(['%s ec2 wait instance-running --instance-ids %s',...
+                    ' --profile gmto.control'],...
+                            self.awspath,self.instance_id));
+toc
+if status~=0
+    error('Starting AWS machine %s failed!',self.instance_id')
+end
+@ 
+\item getting the public IP of the instance.
+<<getting the public IP>>= 
+[status,public_ip_] = system(sprintf(['%s ec2 describe-instances --instance-ids %s',...
+                    ' --output text',...
+                    ' --query Reservations[*].Instances[*].PublicIpAddress',...
+                    ' --profile gmto.control'],...
+                                     self.awspath,self.instance_id));
+if status~=0
+    error('Getting AWS machine public IP failed!')
+end
+self.public_ip = strtrim(public_ip_);
+fprintf('\n ==>> machine is up and running @%s\n',self.public_ip)
+@
+\end{enumerate}
 @
 Once the instance is running, ZeroMQ connects the client to the server port of ZeroMQ on the AWS instance:
 <<broker client: setup ZMQ connection>>=
