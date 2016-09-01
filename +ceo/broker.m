@@ -20,13 +20,41 @@ classdef (Sealed=true) broker < handle
     methods
 
         function self = broker(varargin)
-            currentpath = mfilename('fullpath');
-            k = strfind(currentpath,'/');
-            pathtocfg = fullfile(currentpath(1:k(end)),'..','etc','simceo.json');
-            cfg = loadjson(pathtocfg);
-            self.awspath         = cfg.awsclipath;
-            self.instance_id     = cfg.aws_instance_id;
-            self.AMI_ID          = cfg.aws_AMI_id;
+            p = inputParser;
+            addParameter(p,'awspath','')
+            addParameter(p,'instance_id','')
+            parse(p, varargin{:} )
+            self.awspath     = p.Results.awspath;
+            self.instance_id = p.Results.instance_id;
+            if isempty(self.awspath)
+                if isunix
+                    [~,cmdout] = unix('which aws');
+                    if isempty(cmdout)
+                        if ismac
+                            self.awspath = '/usr/local/bin/aws';
+                        else
+                            % On Linux:
+                            self.awspath = '/home/rconan/anaconda2/bin/aws';
+                        end
+                    else
+                        self.awspath = cmdout;
+                    end
+                elseif ispc
+                    % On Windows:
+                    self.awspath = 'aws.exe';
+                else
+                    error('broker:osNotRecognize','Your machine is neither Unix nor Windows')
+                end
+            end
+            [~,cmdout] = system(sprintf('%s --version',self.awspath));
+            disp(cmdout)
+            if isempty(strfind(cmdout,'aws-cli'))
+                error('broker:awsNotFound',['Cannot find aws cli!\n',...
+                                    ' If aws cli is installed, find the path to ''aws''',...
+                                    ' and at Matlab prompt enter:\n',...
+                                    ' >> agent = ceo.broker.getBroker(''path_to_aws'')'])
+            end
+            self.AMI_ID = 'ami-7e34791e';
             if isempty(self.instance_id)
                 run_instance(self)
                 self.instance_end_state = 'terminate';
@@ -34,6 +62,9 @@ classdef (Sealed=true) broker < handle
                 start_instance(self)
                 self.instance_end_state = 'stop';
             end
+            self.ctx    = zmq.core.ctx_new();
+            self.socket = zmq.core.socket(self.ctx, 'ZMQ_REQ');
+            self.zmqReset = true;
         end
 
         function delete(self)
@@ -95,12 +126,12 @@ classdef (Sealed=true) broker < handle
         end
 
         function start_instance(self)
-            cmd = sprintf(['%s ec2 start-instances --instance-ids %s',...
-                           ' --profile gmto.control'],...
-                          self.awspath,self.instance_id);
-            fprintf('%s\n',cmd)
+        % AWS machine instance ID:
+        % self.instance_id = 'i-063bf1d3bf97020e5';
             fprintf('@(broker)> Starting AWS machine %s...',self.instance_id)
-            [status,~] = system(cmd);
+            [status,~] = system(sprintf(['%s ec2 start-instances --instance-ids %s',...
+                                ' --profile gmto.control'],...
+                                        self.awspath,self.instance_id));
             if status~=0
                 error('Starting AWS machine %s failed!',self.instance_id')
             end
