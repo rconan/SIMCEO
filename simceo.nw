@@ -678,6 +678,11 @@ end
 The Matlab broker class starts an AWS machine and sets--up ZeroMQ context and socket.
 <<broker client>>=
 function self = broker(varargin)
+
+    self.ctx    = zmq.core.ctx_new();
+    self.socket = zmq.core.socket(self.ctx, 'ZMQ_REQ');
+    self.zmqReset = true;
+
     currentpath = mfilename('fullpath');
     k = strfind(currentpath,filesep);
     self.etc = fullfile(currentpath(1:k(end)),'..','etc');
@@ -685,9 +690,6 @@ function self = broker(varargin)
     self.awspath         = cfg.awsclipath;
     self.instance_id     = cfg.aws_instance_id;
     <<broker client: AWS instance launch>>
-    self.ctx    = zmq.core.ctx_new();
-    self.socket = zmq.core.socket(self.ctx, 'ZMQ_REQ');
-    self.zmqReset = true;
 end
 @
 If not instance ID is given, a new machine is launched based on a given AWS AMI.
@@ -722,7 +724,7 @@ cmd = sprintf(['%s ec2 run-instances --profile gmto.control ',...
               self.awspath, fullfile(self.etc,'ec2runinst.json'));
 [status,instance_json] = system(cmd);
 if status~=0
-    error('Launching AWS AMI failed!')
+    error('Launching AWS AMI failed:\n%s',instance_json)
 end
 instance = loadjson(instance_json);
 self.instance_id = instance.Instances{1}(1).InstanceId;
@@ -796,9 +798,9 @@ cmd = sprintf(['%s ec2 start-instances --instance-ids %s',...
               self.awspath,self.instance_id);
 fprintf('%s\n',cmd)
 fprintf('@(broker)> Starting AWS machine %s...\n',self.instance_id)
-[status,~] = system(cmd);
+[status,cmdout] = system(cmd);
 if status~=0
-    error('Starting AWS machine %s failed!',self.instance_id')
+    error('Starting AWS machine %s failed:\n%s',self.instance_id,cmdout)
 end
 @ 
 \item waiting for the confirmation that the instance is running
@@ -882,10 +884,12 @@ end
 @
 \emph{sendrecv} sends a request to the server and returns the server reply:
 <<request and reply>>= 
-function rcev_msg = sendrecv(send_msg)
+function jmsg = sendrecv(send_msg)
     self = ceo.broker.getBroker();
-    zmq.core.send( self.socket, uint8(send_msg) );
+    jsend_msg = saveubjson('',send_msg);
+    zmq.core.send( self.socket, uint8(jsend_msg) );
     rcev_msg = zmq.core.recv( self.socket , 2^24);
+    jmsg = loadubjson(char(rcev_msg),'SimplifyCell',1);
 end
 @ 
 \emph{resetZMQ} resets the ZeroMQ socket
@@ -932,6 +936,7 @@ classdef messages < handle
         outputs
         terminate
         init
+        sampleTime
     end
 
     properties (Dependent)
@@ -994,6 +999,9 @@ The \emph{class\_id} property triggers an update of all the messages:
             self.terminate.class_id = val;
         end
 @
+\subsubsection{IO\_setup}
+\label{sec:io_setup}
+
 The properties of the blocks inputs and outputs are set with:
 <<messages public methods>>=        
         function IO_setup(self,block)
@@ -1011,6 +1019,7 @@ The properties of the blocks inputs and outputs are set with:
                 block.OutputPort(k_out).Complexity   = 'Real';
                 block.OutputPort(k_out).SamplingMode = 'sample';
             end
+            block.SampleTimes = self.sampleTime;
         end
 @
 The \emph{deal} method sends the message to the CEO server, waits for the server replies and process the reply.
@@ -1035,20 +1044,20 @@ The \emph{deal} method sends the message to the CEO server, waits for the server
 <<messages private methods>>=        
         function deal_start(self)
             ceo.broker.resetZMQ()
-            jmsg = ceo.broker.sendrecv(saveubjson('',self.start));
-            tag = char(loadubjson(char(jmsg)));
+            jmsg = ceo.broker.sendrecv(self.start);
+            tag = char(jmsg);
             self.class_id = tag;
             fprintf('@(%s)> Object created!\n',tag)
         end
 
         function deal_init(self)
-            jmsg = ceo.broker.sendrecv(saveubjson('',self.init));
+            jmsg = ceo.broker.sendrecv(self.init);
             fprintf('@(messages)> Object calibrated!\n')
         end
         
         function deal_terminate(self)
-            jmsg = ceo.broker.sendrecv(saveubjson('',self.terminate));
-            fprintf('@(%s)> %s\n',self.class_id,loadubjson(char(jmsg)))
+            jmsg = ceo.broker.sendrecv(self.terminate);
+            fprintf('@(%s)> %s\n',self.class_id,jmsg)
             ceo.broker.setZmqResetFlag(true)
         end
 @ 
@@ -1062,15 +1071,14 @@ The \emph{deal} method sends the message to the CEO server, waits for the server
                                           reshape(block.InputPort(k_in).Data,1,[]);
                 end
             end
-            ceo.broker.sendrecv(saveubjson('',self.update));
+            ceo.broker.sendrecv(self.update);
         end
 @ 
 \emph{deal\_outputs} affects the inputs from the CEO server to the corresponding data field of the block outputs:
 <<messages private methods>>=                
         function deal_outputs(self, block)
             if self.n_out>0
-                jmsg = ceo.broker.sendrecv(saveubjson('',self.outputs));
-                outputs_msg = loadubjson(char(jmsg),'SimplifyCell',1);
+                outputs_msg = ceo.broker.sendrecv(self.outputs);
                 fields = fieldnames(outputs_msg);
                 for k_out=1:self.n_out
                     data = outputs_msg.(fields{k_out});
@@ -1122,7 +1130,7 @@ IO_setup(msg_box, block)
 %
 %  [-1, 0]               : Inherited sample time
 %  [-2, 0]               : Variable sample time
-block.SampleTimes = [1 0];
+%block.SampleTimes = [1 0];
 
 % Specify the block simStateCompliance. The allowed values are:
 %    'UnknownSimState', < The default setting; warn and assume DefaultSimState

@@ -1,5 +1,11 @@
 open models/agws.slx
 
+% Sampling frequency
+fs = 200; % Hz
+Ts = 1/fs;
+% M1 update rate
+M1_Ts = 0.1;
+
 gs_zen = ones(1,3)*8*60;
 gs_azi = (0:2)*120;
 
