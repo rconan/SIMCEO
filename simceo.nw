@@ -899,6 +899,10 @@ function jmsg = sendrecv(send_msg)
     zmq.core.send( self.socket, uint8(jsend_msg) );
     rcev_msg = zmq.core.recv( self.socket , 2^24);
     jmsg = loadubjson(char(rcev_msg),'SimplifyCell',1);
+    if strcmp(char(jmsg),'The server has failed!')
+        disp('Server issue!')
+        set_param(gcs,'SimulationCommand','stop')
+    end
 end
 @ 
 \emph{resetZMQ} resets the ZeroMQ socket
