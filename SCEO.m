@@ -21,7 +21,7 @@ IO_setup(msg_box, block)
 %
 %  [-1, 0]               : Inherited sample time
 %  [-2, 0]               : Variable sample time
-block.SampleTimes = [1 0];
+%block.SampleTimes = [1 0];
 
 % Specify the block simStateCompliance. The allowed values are:
 %    'UnknownSimState', < The default setting; warn and assume DefaultSimState
@@ -76,6 +76,9 @@ deal(msg_box,block,'IO')
 %end Outputs
 
 function Update(block)
+
+%msg_box   = get(gcbh,'UserData');
+%fprintf('__ %s: UPDATE __\n',msg_box.class_id)
 
 %end Update
 
