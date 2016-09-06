@@ -24,6 +24,9 @@ The AWS command line interface (\texttt{aws cli}) allows to launch/terminate and
 To install it, follows the instructions at \\ \url{http://docs.aws.amazon.com/cli/latest/userguide/installing.html} \\
 Once installed, open a terminal and at the shell prompt enter: \\\texttt{>> aws configure --profile gmto.control}\\ and answers the questions using the \texttt{gmto.control.credentials} file provided separately.
 
+At Matlab prompt enter: \texttt{>> system('aws --version')}.
+If Matlab cannot find \texttt{aws}, replace \texttt{aws} in \texttt{etc/simceo.json} by the full path to \texttt{aws}.
+
 \subsection{Matlab--ZMQ}
 \label{sec:zeromq}
 
