@@ -181,7 +181,14 @@ The class method is invoked with:
 <<broker run details>>=
 class_id  = jmsg["class_id"]
 method_id = jmsg["method_id"]
-args_out = getattr( self[class_id], method_id )( **jmsg["args"] )
+try:
+    args_out = getattr( self[class_id], method_id )( **jmsg["args"] )
+except Exception as E:
+    print "The server as failed:"
+    print E
+    print "Recovering gracefully..."
+    class_id = ""
+    args_out = "The server has failed!"
 @ 
 The dictionary--like call is implemented with 
 <<broker get item>>=
