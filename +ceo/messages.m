@@ -10,6 +10,7 @@ classdef messages < handle
         outputs
         terminate
         init
+        sampleTime
     end
 
     properties (Dependent)
@@ -70,6 +71,7 @@ classdef messages < handle
                         block.OutputPort(k_out).Complexity   = 'Real';
                         block.OutputPort(k_out).SamplingMode = 'sample';
                     end
+                    block.SampleTimes = self.sampleTime;
                 end
                 function deal(self,block,tag)
                     switch tag
@@ -94,20 +96,20 @@ classdef messages < handle
         
                 function deal_start(self)
                     ceo.broker.resetZMQ()
-                    jmsg = ceo.broker.sendrecv(saveubjson('',self.start));
-                    tag = char(loadubjson(char(jmsg)));
+                    jmsg = ceo.broker.sendrecv(self.start);
+                    tag = char(jmsg);
                     self.class_id = tag;
                     fprintf('@(%s)> Object created!\n',tag)
                 end
 
                 function deal_init(self)
-                    jmsg = ceo.broker.sendrecv(saveubjson('',self.init));
+                    jmsg = ceo.broker.sendrecv(self.init);
                     fprintf('@(messages)> Object calibrated!\n')
                 end
                 
                 function deal_terminate(self)
-                    jmsg = ceo.broker.sendrecv(saveubjson('',self.terminate));
-                    fprintf('@(%s)> %s\n',self.class_id,loadubjson(char(jmsg)))
+                    jmsg = ceo.broker.sendrecv(self.terminate);
+                    fprintf('@(%s)> %s\n',self.class_id,jmsg)
                     ceo.broker.setZmqResetFlag(true)
                 end
                 function deal_inputs(self, block)
@@ -118,12 +120,11 @@ classdef messages < handle
                                                   reshape(block.InputPort(k_in).Data,1,[]);
                         end
                     end
-                    ceo.broker.sendrecv(saveubjson('',self.update));
+                    ceo.broker.sendrecv(self.update);
                 end
                 function deal_outputs(self, block)
                     if self.n_out>0
-                        jmsg = ceo.broker.sendrecv(saveubjson('',self.outputs));
-                        outputs_msg = loadubjson(char(jmsg),'SimplifyCell',1);
+                        outputs_msg = ceo.broker.sendrecv(self.outputs);
                         fields = fieldnames(outputs_msg);
                         for k_out=1:self.n_out
                             data = outputs_msg.(fields{k_out});

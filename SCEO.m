@@ -77,9 +77,6 @@ deal(msg_box,block,'IO')
 
 function Update(block)
 
-%msg_box   = get(gcbh,'UserData');
-%fprintf('__ %s: UPDATE __\n',msg_box.class_id)
-
 %end Update
 
 function Terminate(block)

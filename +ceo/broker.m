@@ -5,13 +5,13 @@ classdef (Sealed=true) broker < handle
     
     properties
         awspath % full path to the AWS CLI
-        AMI_ID % The AWS AMI ID number
         instance_id % The AWS instance ID number
         public_ip % The AWS instance public IP
         zmqReset % ZMQ connection reset flag
     end
     
     properties (Access=private)
+        etc
         instance_end_state
         ctx
         socket
@@ -20,41 +20,17 @@ classdef (Sealed=true) broker < handle
     methods
 
         function self = broker(varargin)
-            p = inputParser;
-            addParameter(p,'awspath','')
-            addParameter(p,'instance_id','')
-            parse(p, varargin{:} )
-            self.awspath     = p.Results.awspath;
-            self.instance_id = p.Results.instance_id;
-            if isempty(self.awspath)
-                if isunix
-                    [~,cmdout] = unix('which aws');
-                    if isempty(cmdout)
-                        if ismac
-                            self.awspath = '/usr/local/bin/aws';
-                        else
-                            % On Linux:
-                            self.awspath = '/home/rconan/anaconda2/bin/aws';
-                        end
-                    else
-                        self.awspath = cmdout;
-                    end
-                elseif ispc
-                    % On Windows:
-                    self.awspath = 'aws.exe';
-                else
-                    error('broker:osNotRecognize','Your machine is neither Unix nor Windows')
-                end
-            end
-            [~,cmdout] = system(sprintf('%s --version',self.awspath));
-            disp(cmdout)
-            if isempty(strfind(cmdout,'aws-cli'))
-                error('broker:awsNotFound',['Cannot find aws cli!\n',...
-                                    ' If aws cli is installed, find the path to ''aws''',...
-                                    ' and at Matlab prompt enter:\n',...
-                                    ' >> agent = ceo.broker.getBroker(''path_to_aws'')'])
-            end
-            self.AMI_ID = 'ami-7e34791e';
+
+            self.ctx    = zmq.core.ctx_new();
+            self.socket = zmq.core.socket(self.ctx, 'ZMQ_REQ');
+            self.zmqReset = true;
+
+            currentpath = mfilename('fullpath');
+            k = strfind(currentpath,filesep);
+            self.etc = fullfile(currentpath(1:k(end)),'..','etc');
+            cfg = loadjson(fullfile(self.etc,'simceo.json'));
+            self.awspath         = cfg.awsclipath;
+            self.instance_id     = cfg.aws_instance_id;
             if isempty(self.instance_id)
                 run_instance(self)
                 self.instance_end_state = 'terminate';
@@ -62,9 +38,6 @@ classdef (Sealed=true) broker < handle
                 start_instance(self)
                 self.instance_end_state = 'stop';
             end
-            self.ctx    = zmq.core.ctx_new();
-            self.socket = zmq.core.socket(self.ctx, 'ZMQ_REQ');
-            self.zmqReset = true;
         end
 
         function delete(self)
@@ -76,76 +49,84 @@ classdef (Sealed=true) broker < handle
         end
 
         function run_instance(self)
-            cd('etc')
-            [status,instance_json] = system(sprintf(['%s ec2 run-instances --image-id %s --count 1',...
-                                ' --instance-type g2.2xlarge --key-name gmtocontrol.pem',...
-                                ' --security-groups launch-wizard-2 --profile gmto.control'],...
-                                               self.awspath, self.AMI_ID));
+            cmd = sprintf(['%s ec2 run-instances --profile gmto.control ',...
+                           '--cli-input-json file://%s'],...
+                          self.awspath, fullfile(self.etc,'ec2runinst.json'));
+            [status,instance_json] = system(cmd);
             if status~=0
-                error('Launching AWS AMI %s failed!',self.AMI_ID')
+                error('Launching AWS AMI failed:\n%s',instance_json)
             end
-            cd('..')
             instance = loadjson(instance_json);
             self.instance_id = instance.Instances{1}(1).InstanceId;
             fprintf('>>>> WAITING FOR AWS INSTANCE %s TO START ... \n',self.instance_id)
             tic
-            [status,~] = system(sprintf('%s ec2 wait instance-running --instance-ids %s --profile gmto.control',...
+            [status,~] = system(sprintf(['%s ec2 wait instance-running --instance-ids %s',...
+                                ' --profile gmto.control'],...
                                         self.awspath,self.instance_id));
             toc
             if status~=0
                 error('Starting AWS machine %s failed!',self.instance_id')
             end
-            fprintf('>>>> WAITING FOR AWS INSTANCE %s TO INITIALIZE ... (This usually takes a few minutes!)\n',self.instance_id)
+            fprintf('>>>> WAITING FOR AWS INSTANCE %s TO INITIALIZE ... \n',self.instance_id)
+            fprintf('(This usually takes a few minutes!)\n')
             tic
-            [status,~] = system(sprintf('%s ec2 wait instance-status-ok --instance-ids %s --profile gmto.control',...
-                                        self.awspath,self.instance_id));
+            cmd = sprintf(['%s ec2 wait instance-status-ok --instance-ids %s ',...
+                           '--profile gmto.control'],...
+                          self.awspath,self.instance_id);
+            [status,~] = system(cmd);
             toc
             if status~=0
                 error('Starting AWS machine %s failed!',self.instance_id')
             end
-            [status,~] = system(sprintf([...
-                '%s cloudwatch put-metric-alarm --alarm-name CEO-SERVER-FAILSAFE',...
-                ' --alarm-description "Terminate the instance when it is idle for 4 hours"',...
-                ' --namespace "AWS/EC2" --dimensions Name=InstanceId,Value="%s"',...
-                ' --statistic Average --metric-name CPUUtilization',...
-                ' --comparison-operator LessThanThreshold --threshold 10 --period 3600',...
-                ' --evaluation-periods 4 --alarm-actions arn:aws:automate:us-west-1:ec2:terminate --profile gmto.control'],...
-                                                 self.awspath,self.instance_id));
+            cmd = sprintf(['%s cloudwatch put-metric-alarm ',...
+                           '--profile gmto.control ',...
+                           '--dimensions Name=InstanceId,Value=%s ',...
+                           '--cli-input-json file://%s'],...
+                          self.awspath,...
+                          self.instance_id,...
+                          fullfile(self.etc,'cloudwatch.json'));
+            [status,~] = system(cmd);
             if status~=0
                 error('Setting alarm for AWS machine %s failed!',self.instance_id')
             end
-            [status,public_ip_] = system(sprintf(['%s ec2 describe-instances --instance-ids %s',...
-                                ' --output text',...
-                                ' --query Reservations[*].Instances[*].PublicIpAddress --profile gmto.control'],...
-                                            self.awspath, self.instance_id));    
+            cmd = sprintf(['%s ec2 describe-instances --instance-ids %s',...
+                           ' --output text',...  
+                           ' --query Reservations[*].Instances[*].PublicIpAddress',...
+                           ' --profile gmto.control'],...
+                          self.awspath,self.instance_id);
+            [status,public_ip_] = system(cmd);
             if status~=0
                 error('Getting AWS machine public IP failed!')
             end
             self.public_ip = strtrim(public_ip_);
-            fprintf('\n ==>> machine is up and running @%s\n',self.public_ip)
+            fprintf('\n ==>> machine is up and running @%s\n',self.public_ip)    
         end
 
         function start_instance(self)
-        % AWS machine instance ID:
-        % self.instance_id = 'i-063bf1d3bf97020e5';
-            fprintf('@(broker)> Starting AWS machine %s...',self.instance_id)
-            [status,~] = system(sprintf(['%s ec2 start-instances --instance-ids %s',...
-                                ' --profile gmto.control'],...
-                                        self.awspath,self.instance_id));
+            cmd = sprintf(['%s ec2 start-instances --instance-ids %s',...
+                           ' --profile gmto.control'],...
+                          self.awspath,self.instance_id);
+            fprintf('%s\n',cmd)
+            fprintf('@(broker)> Starting AWS machine %s...\n',self.instance_id)
+            [status,cmdout] = system(cmd);
             if status~=0
-                error('Starting AWS machine %s failed!',self.instance_id')
+                error('Starting AWS machine %s failed:\n%s',self.instance_id,cmdout)
             end
+            fprintf('>>>> WAITING FOR AWS INSTANCE %s TO START ... \n',self.instance_id)
+            tic
             [status,~] = system(sprintf(['%s ec2 wait instance-running --instance-ids %s',...
                                 ' --profile gmto.control'],...
                                         self.awspath,self.instance_id));
+            toc
             if status~=0
                 error('Starting AWS machine %s failed!',self.instance_id')
             end
-            [status,public_ip_] = system(sprintf(['%s ec2 describe-instances --instance-ids %s',...
-                                ' --output text',...
-                                ' --query Reservations[*].Instances[*].PublicIpAddress',...
-                                ' --profile gmto.control'],...
-                                                 self.awspath,self.instance_id));
+            cmd = sprintf(['%s ec2 describe-instances --instance-ids %s',...
+                           ' --output text',...  
+                           ' --query Reservations[*].Instances[*].PublicIpAddress',...
+                           ' --profile gmto.control'],...
+                          self.awspath,self.instance_id);
+            [status,public_ip_] = system(cmd);
             if status~=0
                 error('Getting AWS machine public IP failed!')
             end
@@ -158,7 +139,8 @@ classdef (Sealed=true) broker < handle
                 fprintf('@(broker)> Terminating instance %s!\n',self.instance_id)
                 [status,~] = system(sprintf(['%s ec2 %s-instances',...
                                     ' --instance-ids %s --profile gmto.control'],...
-                                            self.awspath, self.instance_end_state, self.instance_id));
+                                            self.awspath, self.instance_end_state,...
+                                            self.instance_id));
                 if status~=0
                     error('Terminating AWS instance %s failed!',self.instance_id')
                 end
@@ -190,10 +172,12 @@ classdef (Sealed=true) broker < handle
             self = this;
         end
 
-        function rcev_msg = sendrecv(send_msg)
+        function jmsg = sendrecv(send_msg)
             self = ceo.broker.getBroker();
-            zmq.core.send( self.socket, uint8(send_msg) );
+            jsend_msg = saveubjson('',send_msg);
+            zmq.core.send( self.socket, uint8(jsend_msg) );
             rcev_msg = zmq.core.recv( self.socket , 2^24);
+            jmsg = loadubjson(char(rcev_msg),'SimplifyCell',1);
         end
 
         function resetZMQ()
@@ -202,7 +186,8 @@ classdef (Sealed=true) broker < handle
                 [~,aws_instance_state] = system(...
                     sprintf(['%s ec2 describe-instances --instance-ids %s',...
                              ' --output text',...
-                             ' --query Reservations[*].Instances[*].State.Name --profile gmto.control'],...
+                             ' --query Reservations[*].Instances[*].State.Name ',...
+                             '--profile gmto.control'],...
                     self.awspath, self.instance_id));
                 if any(strcmp(strtrim(aws_instance_state),{'shutting-down','terminated'}))
                     run_instance(self)
