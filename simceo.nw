@@ -1398,9 +1398,9 @@ It is a $7\times$`n_mode` matrix of either bending mode for M1 or Zernike coeffi
 The CEO daemon is start at boot time with the \emph{CEO.sh} shell script.
 It must be placed in the \texttt{/etc/init.d} directory.
 <<CEO.sh>>=
-#!/bin/sh -e
+#!/bin/bash -e
 
-DAEMON="/home/ubuntu/Dropbox/SIMCEO/etc/ceo_server" 
+DAEMON="/usr/bin/env LD_LIBRARY_PATH=/usr/local/cuda/lib64 PYTHONPATH=/home/ubuntu/CEO/python /home/ubuntu/anaconda/bin/python /home/ubuntu/Dropbox/SIMCEO/simceo.py"
 daemon_OPT=""  
 DAEMONUSER="root" 
 daemon_NAME="ceo_server" 
@@ -1408,7 +1408,7 @@ PIDFILE=/var/run/$daemon_NAME.pid
 
 PATH="/sbin:/bin:/usr/sbin:/usr/bin" #Ne pas toucher
 
-test -x $DAEMON || exit 0
+#test -x $DAEMON || exit 0
 
 . /lib/lsb/init-functions
 
@@ -1452,8 +1452,3 @@ case "$1" in
 esac
 exit 0
 @ 
-The CEO server is started from the CEO daemon with the \emph{ceo\_server} bash script:
-<<ceo\_server>>=
-#!/bin/bash
-echo $(date)" Starting Script" > /tmp/ceo_server.log  
-env LD_LIBRARY_PATH=/usr/local/cuda/lib64 PYTHONPATH=/home/ubuntu/CEO/python /home/ubuntu/anaconda/bin/python /home/ubuntu/Dropbox/SIMCEO/simceo.py >> /tmp/ceo_server.log
