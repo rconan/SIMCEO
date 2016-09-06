@@ -83,7 +83,7 @@ from collections import OrderedDict
 import os
 import shelve
 
-SIMCEOPATH = '/home/ubuntu/Dropbox/gmt_sim/gmt_dos/modules/plant/ceo'
+SIMCEOPATH = os.path.abspath(os.path.dirname(__file__))
 
 class Timer(object):
     def __init__(self, name=None):
@@ -541,13 +541,18 @@ The message that triggers a call to the \emph{InitializeConditions} method is
         if calibrations is not None:
             #import scipy.io.matlab as matlab
             #print kwargs
+            k = 0
+            if not isinstance(SVD_truncation,list):
+                SVD_truncation = [SVD_truncation]
             if calibration_file is not None:
-                db = shelve.open(SIMCEOPATH+"/calibration_dbs/"+calibration_file)
-                if os.path.isfile(SIMCEOPATH+"/calibration_dbs/"+calibration_file+".dir"):
+                filepath = os.path.join(SIMCEOPATH,"calibration_dbs",calibration_file)
+                db = shelve.open(filepath)
+                if os.path.isfile(filepath+".dir"):
                     print " . Loading command matrix from existing database %s!"%calibration_file
                     for key in db:
                         C = db[key]
-                        C.nThreshold = SVD_truncation
+                        C.nThreshold = SVD_truncation[k]
+                        k+=1
                         self.comm_matrix[key] = C.M
                         db[key] = C
                     db.close()
@@ -566,7 +571,8 @@ The message that triggers a call to the \emph{InitializeConditions} method is
                         self.gmt.reset()
 
                     Dc = np.concatenate( D, axis=1 )
-                    C = CalibrationMatrix(Dc, SVD_truncation)
+                    C = CalibrationMatrix(Dc, SVD_truncation[k])
+                    k+=1
                     self.poke_matrix[key] = C
                     #matlab.savemat('poke_matrix.mat',{'D':Dc})
                     self.comm_matrix[key] = self.poke_matrix[key].M
@@ -1408,7 +1414,7 @@ test -x $DAEMON || exit 0
 
 d_start () {
         log_daemon_msg "Starting system $daemon_NAME Daemon"
-        start-stop-daemon --background --name $daemon_NAME --start --quiet --pidfile "$PIDFILE" --chuid $DAEMONUSER --exec $DAEMON -- $daemon_OPT
+        start-stop-daemon --background --name $daemon_NAME --start --quiet --make-pidfile --pidfile "$PIDFILE" --chuid $DAEMONUSER --exec $DAEMON -- $daemon_OPT
         log_end_msg $?
 }
 

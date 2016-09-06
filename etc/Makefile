@@ -1,4 +1,6 @@
-all:
+all:	
+	sudo /etc/init.d/CEO.sh stop
+	sudo killall simceo.py ceo_server
 	sudo cp .CEO.sh CEO.sh
 	sudo cp .ceo_server ceo_server
 	sudo chown root:root CEO.sh
