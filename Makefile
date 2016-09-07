@@ -25,7 +25,7 @@ doc: simceo.nw simceo.tex
 	make -C doc/ all
 
 zip: matlab maskdoc doc
-	zip -r simceo.zip +ceo/* doc/simceo_refman.pdf etc/gmto.control.credentials.csv  jsonlab/* matlab-zmq/* masks/*.html masks/*.css models/* CEO.slx SCEO.m slblocks.m simceo.nw
+	zip -r simceo.zip +ceo/* doc/simceo_refman.pdf etc/ec2runinst.json etc/cloudwatch.json etc/simceo.json  jsonlab/* matlab-zmq/* masks/*.html masks/*.css models/* CEO.slx SCEO.m slblocks.m simceo.nw
 
 ipython:
 	env LD_LIBRARY_PATH=/usr/local/cuda/lib64 PYTHONPATH=/home/ubuntu/CEO/python ipython

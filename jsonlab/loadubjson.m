@@ -57,6 +57,9 @@ elseif(exist(fname,'file'))
    fid = fopen(fname,'rb');
    string = fread(fid,inf,'uint8=>char')';
    fclose(fid);
+elseif strcmp(fname,'Z')
+    data = [];
+    return
 else
    error('input file does not exist');
 end

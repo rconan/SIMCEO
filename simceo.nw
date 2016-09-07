@@ -2,7 +2,7 @@
 \section{Introduction}
 \label{sec:introduction}
 
-This documents describes SIMCEO, a interface between CEO and Simulink.
+This documents describes SIMCEO, an interface between CEO and Simulink.
 SIMCEO allows to seamlessly integrates CEO functionalities into a Simulink model.
 A Simulink library, \emph{CEO}, provides a set of blocks that are used to instantiate CEO objects.
 The blocks either send data to the CEO objects updating the state of these objects, or query data from the CEO objects.
@@ -22,7 +22,10 @@ In addition to Matlab and Simulink, the client relies of aws cli, ZeroMQ and UBJ
 
 The AWS command line interface (\texttt{aws cli}) allows to launch/terminate and to start/stop the AWS instances where the SIMCEO server resides.
 To install it, follows the instructions at \\ \url{http://docs.aws.amazon.com/cli/latest/userguide/installing.html} \\
-Once installed, open a terminal and at the shell prompt enter: \\\texttt{>> aws configure --profile gmto.control}\\ and answers the questions using the \texttt{gmto.control.credentials} file in the \texttt{etc/} directory.
+Once installed, open a terminal and at the shell prompt enter: \\\texttt{>> aws configure --profile gmto.control}\\ and answers the questions using the \texttt{gmto.control.credentials} file provided separately.
+
+At Matlab prompt enter: \texttt{>> system('aws --version')}.
+If Matlab cannot find \texttt{aws}, replace \texttt{aws} in \texttt{etc/simceo.json} by the full path to \texttt{aws}.
 
 \subsection{Matlab--ZMQ}
 \label{sec:zeromq}
@@ -652,13 +655,13 @@ classdef (Sealed=true) broker < handle
     
     properties
         awspath % full path to the AWS CLI
-        AMI_ID % The AWS AMI ID number
         instance_id % The AWS instance ID number
         public_ip % The AWS instance public IP
         zmqReset % ZMQ connection reset flag
     end
     
     properties (Access=private)
+        etc
         instance_end_state
         ctx
         socket
@@ -687,57 +690,25 @@ classdef (Sealed=true) broker < handle
     end
 
 end
-@ 
-The Matlab broker class starts an AWS machine and sets--up the ZeroMQ connection.
-The 
+@ %def awspath instance_id ctx socket public_ip zmqReset instance_end_state etc
+The Matlab broker class starts an AWS machine and sets--up ZeroMQ context and socket.
 <<broker client>>=
 function self = broker(varargin)
-    p = inputParser;
-    addParameter(p,'awspath','')
-    addParameter(p,'instance_id','')
-    parse(p, varargin{:} )
-    self.awspath     = p.Results.awspath;
-    self.instance_id = p.Results.instance_id;
-    <<broker client: AWS CLI path>>
-    self.AMI_ID = 'ami-bc2b66dc';
-    <<broker client: AWS instance launch>>
+
     self.ctx    = zmq.core.ctx_new();
     self.socket = zmq.core.socket(self.ctx, 'ZMQ_REQ');
     self.zmqReset = true;
-end
-@ 
-If not argument is passed to the constructor, the routine selects the path to AWS CLI command \texttt{aws} based on the nature of the client OS.
-<<broker client: AWS CLI path>>=
-if isempty(self.awspath)
-    if isunix
-        [~,cmdout] = unix('which aws');
-        if isempty(cmdout)
-            if ismac
-                self.awspath = '/usr/local/bin/aws';
-            else
-                % On Linux:
-                self.awspath = '/home/rconan/anaconda2/bin/aws';
-            end
-        else
-            self.awspath = cmdout;
-        end
-    elseif ispc
-        % On Windows:
-        self.awspath = 'aws.exe';
-    else
-        error('broker:osNotRecognize','Your machine is neither Unix nor Windows')
-    end
-end
-[~,cmdout] = system(sprintf('%s --version',self.awspath));
-disp(cmdout)
-if isempty(strfind(cmdout,'aws-cli'))
-    error('broker:awsNotFound',['Cannot find aws cli!\n',...
-                        ' If aws cli is installed, find the path to ''aws''',...
-                        ' and at Matlab prompt enter:\n',...
-                        ' >> agent = ceo.broker.getBroker(''path_to_aws'')'])
+
+    currentpath = mfilename('fullpath');
+    k = strfind(currentpath,filesep);
+    self.etc = fullfile(currentpath(1:k(end)),'..','etc');
+    cfg = loadjson(fullfile(self.etc,'simceo.json'));
+    self.awspath         = cfg.awsclipath;
+    self.instance_id     = cfg.aws_instance_id;
+    <<broker client: AWS instance launch>>
 end
 @
-If not instance ID is given, a new machine is launched based on the image corresponding to the set AWS AMI ID.
+If not instance ID is given, a new machine is launched based on a given AWS AMI.
 <<broker client: AWS instance launch>>=
 if isempty(self.instance_id)
     run_instance(self)
@@ -749,100 +720,132 @@ end
 @
 \subsubsection{run\_instance}
 \label{sec:run_instance}
- 
+
+If no instance ID is set in the \texttt{simceo.json} configuration file, a new instance is created from the AMI whose ID is given in \texttt{etc/ec2runinst.json} file. 
 <<launch AWS AMI>>=
 function run_instance(self)
-    cd('etc')
-    [status,instance_json] = system(sprintf(['%s ec2 run-instances --image-id %s --count 1',...
-                        ' --instance-type g2.2xlarge --key-name gmtocontrol.pem',...
-                        ' --security-groups launch-wizard-2 --profile gmto.control'],...
-                                       self.awspath, self.AMI_ID));
-    if status~=0
-        error('Launching AWS AMI %s failed!',self.AMI_ID')
-    end
-    cd('..')
-    instance = loadjson(instance_json);
-    self.instance_id = instance.Instances{1}(1).InstanceId;
-    fprintf('>>>> WAITING FOR AWS INSTANCE %s TO START ... \n',self.instance_id)
-    tic
-    [status,~] = system(sprintf('%s ec2 wait instance-running --instance-ids %s --profile gmto.control',...
-                                self.awspath,self.instance_id));
-    toc
-    if status~=0
-        error('Starting AWS machine %s failed!',self.instance_id')
-    end
-    fprintf('>>>> WAITING FOR AWS INSTANCE %s TO INITIALIZE ... (This usually takes a few minutes!)\n',self.instance_id)
-    tic
-    [status,~] = system(sprintf('%s ec2 wait instance-status-ok --instance-ids %s --profile gmto.control',...
-                                self.awspath,self.instance_id));
-    toc
-    if status~=0
-        error('Starting AWS machine %s failed!',self.instance_id')
-    end
-    [status,~] = system(sprintf([...
-        '%s cloudwatch put-metric-alarm --alarm-name CEO-SERVER-FAILSAFE',...
-        ' --alarm-description "Terminate the instance when it is idle for 4 hours"',...
-        ' --namespace "AWS/EC2" --dimensions Name=InstanceId,Value="%s"',...
-        ' --statistic Average --metric-name CPUUtilization',...
-        ' --comparison-operator LessThanThreshold --threshold 10 --period 3600',...
-        ' --evaluation-periods 4 --alarm-actions arn:aws:automate:us-west-1:ec2:terminate --profile gmto.control'],...
-                                         self.awspath,self.instance_id));
-    if status~=0
-        error('Setting alarm for AWS machine %s failed!',self.instance_id')
-    end
-    [status,public_ip_] = system(sprintf(['%s ec2 describe-instances --instance-ids %s',...
-                        ' --output text',...
-                        ' --query Reservations[*].Instances[*].PublicIpAddress --profile gmto.control'],...
-                                    self.awspath, self.instance_id));    
-    if status~=0
-        error('Getting AWS machine public IP failed!')
-    end
-    self.public_ip = strtrim(public_ip_);
-    fprintf('\n ==>> machine is up and running @%s\n',self.public_ip)
+    <<launching an instance>>
+    <<waiting for the running state>>
+    <<waiting for initialization>>
+    <<setting up cloudwatch>>
+    <<getting the public IP>>    
 end
 @ 
+The sequence of operations is:
+\begin{enumerate}
+\item launching the instance,
+<<launching an instance>>=
+cmd = sprintf(['%s ec2 run-instances --profile gmto.control ',...
+               '--cli-input-json file://%s'],...
+              self.awspath, fullfile(self.etc,'ec2runinst.json'));
+[status,instance_json] = system(cmd);
+if status~=0
+    error('Launching AWS AMI failed:\n%s',instance_json)
+end
+instance = loadjson(instance_json);
+self.instance_id = instance.Instances{1}(1).InstanceId;
+@ 
+\item waiting for the confirmation that the instance is running,
+\item waiting for the confirmation that the instance has finished to initialize,
+<<waiting for initialization>>=
+fprintf('>>>> WAITING FOR AWS INSTANCE %s TO INITIALIZE ... \n',self.instance_id)
+fprintf('(This usually takes a few minutes!)\n')
+tic
+cmd = sprintf(['%s ec2 wait instance-status-ok --instance-ids %s ',...
+               '--profile gmto.control'],...
+              self.awspath,self.instance_id);
+[status,~] = system(cmd);
+toc
+if status~=0
+    error('Starting AWS machine %s failed!',self.instance_id')
+end
+@ 
+\item setting up an alarm that terminates an instance idle for man than 4hours,
+<<setting up cloudwatch>>=
+cmd = sprintf(['%s cloudwatch put-metric-alarm ',...
+               '--profile gmto.control ',...
+               '--dimensions Name=InstanceId,Value=%s ',...
+               '--cli-input-json file://%s'],...
+              self.awspath,...
+              self.instance_id,...
+              fullfile(self.etc,'cloudwatch.json'));
+[status,~] = system(cmd);
+if status~=0
+    error('Setting alarm for AWS machine %s failed!',self.instance_id')
+end
+@ 
+\item getting the public IP of the instance.
+\end{enumerate}
+@
+\subsubsection{terminate\_instance}
+\label{sec:terminate_instance}
+
 <<terminate AWS instance>>=
 function terminate_instance(self)
     if strcmp(self.instance_end_state,'terminate')
         fprintf('@(broker)> Terminating instance %s!\n',self.instance_id)
         [status,~] = system(sprintf(['%s ec2 %s-instances',...
                             ' --instance-ids %s --profile gmto.control'],...
-                                    self.awspath, self.instance_end_state, self.instance_id));
+                                    self.awspath, self.instance_end_state,...
+				    self.instance_id));
         if status~=0
             error('Terminating AWS instance %s failed!',self.instance_id')
         end
     end
 end
-@ 
-The AWS command line interface must be installed and the instance ID must be provided: 
+@
+\subsubsection{start\_instance}
+\label{sec:start_instance}
+
+If an instance ID has been set in the \texttt{simceo.json} configuration file, this instance is started.
 <<start AWS instance>>=
 function start_instance(self)
-% AWS machine instance ID:
-% self.instance_id = 'i-063bf1d3bf97020e5';
-    fprintf('@(broker)> Starting AWS machine %s...',self.instance_id)
-    [status,~] = system(sprintf(['%s ec2 start-instances --instance-ids %s',...
-                        ' --profile gmto.control'],...
-                                self.awspath,self.instance_id));
-    if status~=0
-        error('Starting AWS machine %s failed!',self.instance_id')
-    end
-    [status,~] = system(sprintf(['%s ec2 wait instance-running --instance-ids %s',...
-                        ' --profile gmto.control'],...
-                                self.awspath,self.instance_id));
-    if status~=0
-        error('Starting AWS machine %s failed!',self.instance_id')
-    end
-    [status,public_ip_] = system(sprintf(['%s ec2 describe-instances --instance-ids %s',...
-                        ' --output text',...
-                        ' --query Reservations[*].Instances[*].PublicIpAddress',...
-                        ' --profile gmto.control'],...
-                                         self.awspath,self.instance_id));
-    if status~=0
-        error('Getting AWS machine public IP failed!')
-    end
-    self.public_ip = strtrim(public_ip_);
-    fprintf('\n ==>> machine is up and running @%s\n',self.public_ip)
+    <<starting an instance>>
+    <<waiting for the running state>>
+    <<getting the public IP>>
 end
+@
+The sequence of operations is:
+\begin{enumerate}
+\item starting the instance:
+<<starting an instance>>=
+cmd = sprintf(['%s ec2 start-instances --instance-ids %s',...
+               ' --profile gmto.control'],...
+              self.awspath,self.instance_id);
+fprintf('%s\n',cmd)
+fprintf('@(broker)> Starting AWS machine %s...\n',self.instance_id)
+[status,cmdout] = system(cmd);
+if status~=0
+    error('Starting AWS machine %s failed:\n%s',self.instance_id,cmdout)
+end
+@ 
+\item waiting for the confirmation that the instance is running
+<<waiting for the running state>>=
+fprintf('>>>> WAITING FOR AWS INSTANCE %s TO START ... \n',self.instance_id)
+tic
+[status,~] = system(sprintf(['%s ec2 wait instance-running --instance-ids %s',...
+                    ' --profile gmto.control'],...
+                            self.awspath,self.instance_id));
+toc
+if status~=0
+    error('Starting AWS machine %s failed!',self.instance_id')
+end
+@ 
+\item getting the public IP of the instance.
+<<getting the public IP>>=
+cmd = sprintf(['%s ec2 describe-instances --instance-ids %s',...
+               ' --output text',...  
+               ' --query Reservations[*].Instances[*].PublicIpAddress',...
+               ' --profile gmto.control'],...
+              self.awspath,self.instance_id);
+[status,public_ip_] = system(cmd);
+if status~=0
+    error('Getting AWS machine public IP failed!')
+end
+self.public_ip = strtrim(public_ip_);
+fprintf('\n ==>> machine is up and running @%s\n',self.public_ip)
+@
+\end{enumerate}
 @
 Once the instance is running, ZeroMQ connects the client to the server port of ZeroMQ on the AWS instance:
 <<broker client: setup ZMQ connection>>=
@@ -897,10 +900,12 @@ end
 @
 \emph{sendrecv} sends a request to the server and returns the server reply:
 <<request and reply>>= 
-function rcev_msg = sendrecv(send_msg)
+function jmsg = sendrecv(send_msg)
     self = ceo.broker.getBroker();
-    zmq.core.send( self.socket, uint8(send_msg) );
+    jsend_msg = saveubjson('',send_msg);
+    zmq.core.send( self.socket, uint8(jsend_msg) );
     rcev_msg = zmq.core.recv( self.socket , 2^24);
+    jmsg = loadubjson(char(rcev_msg),'SimplifyCell',1);
 end
 @ 
 \emph{resetZMQ} resets the ZeroMQ socket
@@ -911,7 +916,8 @@ function resetZMQ()
         [~,aws_instance_state] = system(...
             sprintf(['%s ec2 describe-instances --instance-ids %s',...
                      ' --output text',...
-                     ' --query Reservations[*].Instances[*].State.Name --profile gmto.control'],...
+                     ' --query Reservations[*].Instances[*].State.Name ',...
+                     '--profile gmto.control'],...
             self.awspath, self.instance_id));
         if any(strcmp(strtrim(aws_instance_state),{'shutting-down','terminated'}))
             run_instance(self)
@@ -946,6 +952,7 @@ classdef messages < handle
         outputs
         terminate
         init
+        sampleTime
     end
 
     properties (Dependent)
@@ -968,7 +975,7 @@ classdef messages < handle
 
     end
  end
-@  
+@ %def n_in dims_in n_out dims_out start update outputs terminate init
 There are five messages that corresponds to 4 four S--function routines:
 <<messages public methods>>=
     function self = messages(class_id)
@@ -1008,6 +1015,9 @@ The \emph{class\_id} property triggers an update of all the messages:
             self.terminate.class_id = val;
         end
 @
+\subsubsection{IO\_setup}
+\label{sec:io_setup}
+
 The properties of the blocks inputs and outputs are set with:
 <<messages public methods>>=        
         function IO_setup(self,block)
@@ -1025,6 +1035,7 @@ The properties of the blocks inputs and outputs are set with:
                 block.OutputPort(k_out).Complexity   = 'Real';
                 block.OutputPort(k_out).SamplingMode = 'sample';
             end
+            block.SampleTimes = self.sampleTime;
         end
 @
 The \emph{deal} method sends the message to the CEO server, waits for the server replies and process the reply.
@@ -1049,20 +1060,20 @@ The \emph{deal} method sends the message to the CEO server, waits for the server
 <<messages private methods>>=        
         function deal_start(self)
             ceo.broker.resetZMQ()
-            jmsg = ceo.broker.sendrecv(saveubjson('',self.start));
-            tag = char(loadubjson(char(jmsg)));
+            jmsg = ceo.broker.sendrecv(self.start);
+            tag = char(jmsg);
             self.class_id = tag;
             fprintf('@(%s)> Object created!\n',tag)
         end
 
         function deal_init(self)
-            jmsg = ceo.broker.sendrecv(saveubjson('',self.init));
+            jmsg = ceo.broker.sendrecv(self.init);
             fprintf('@(messages)> Object calibrated!\n')
         end
         
         function deal_terminate(self)
-            jmsg = ceo.broker.sendrecv(saveubjson('',self.terminate));
-            fprintf('@(%s)> %s\n',self.class_id,loadubjson(char(jmsg)))
+            jmsg = ceo.broker.sendrecv(self.terminate);
+            fprintf('@(%s)> %s\n',self.class_id,jmsg)
             ceo.broker.setZmqResetFlag(true)
         end
 @ 
@@ -1076,15 +1087,14 @@ The \emph{deal} method sends the message to the CEO server, waits for the server
                                           reshape(block.InputPort(k_in).Data,1,[]);
                 end
             end
-            ceo.broker.sendrecv(saveubjson('',self.update));
+            ceo.broker.sendrecv(self.update);
         end
 @ 
 \emph{deal\_outputs} affects the inputs from the CEO server to the corresponding data field of the block outputs:
 <<messages private methods>>=                
         function deal_outputs(self, block)
             if self.n_out>0
-                jmsg = ceo.broker.sendrecv(saveubjson('',self.outputs));
-                outputs_msg = loadubjson(char(jmsg),'SimplifyCell',1);
+                outputs_msg = ceo.broker.sendrecv(self.outputs);
                 fields = fieldnames(outputs_msg);
                 for k_out=1:self.n_out
                     data = outputs_msg.(fields{k_out});
@@ -1136,7 +1146,7 @@ IO_setup(msg_box, block)
 %
 %  [-1, 0]               : Inherited sample time
 %  [-2, 0]               : Variable sample time
-block.SampleTimes = [1 0];
+%block.SampleTimes = [1 0];
 
 % Specify the block simStateCompliance. The allowed values are:
 %    'UnknownSimState', < The default setting; warn and assume DefaultSimState
@@ -1459,3 +1469,8 @@ case "$1" in
 esac
 exit 0
 @ 
+
+\section{Index} 
+\nowebindex
+\section{List of code chunks}
+\nowebchunks
