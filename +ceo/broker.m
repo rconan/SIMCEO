@@ -176,8 +176,23 @@ classdef (Sealed=true) broker < handle
             self = ceo.broker.getBroker();
             jsend_msg = saveubjson('',send_msg);
             zmq.core.send( self.socket, uint8(jsend_msg) );
-            rcev_msg = zmq.core.recv( self.socket , 2^24);
+            rcev_msg = -1;
+            count = 0;
+            while all(rcev_msg<0) && (count<15)
+                rcev_msg = zmq.core.recv( self.socket , 2^24);
+                if count>0
+                    fprintf('@(broker)> sendrecv: Server busy (call #%d)!\n',15-count)
+                end
+                count = count + 1;
+            end
+            if count==15
+                set_param(gcs,'SimulationCommand','stop')
+            end
             jmsg = loadubjson(char(rcev_msg),'SimplifyCell',1);
+            if ~isstruct(jmsg) && strcmp(char(jmsg),'The server has failed!')
+                disp('Server issue!')
+                set_param(gcs,'SimulationCommand','stop')
+            end    
         end
 
         function resetZMQ()
