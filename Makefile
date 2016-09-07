@@ -18,7 +18,6 @@ maskdoc: simceo.nw
 server: simceo.nw
 	mkdir -p etc
 	$(TANGLE) -RCEO.sh simceo.nw > etc/.CEO.sh
-	$(TANGLE) -Rceo\\_server simceo.nw > etc/.ceo_server
 	make -C etc/ all
 
 doc: simceo.nw simceo.tex
