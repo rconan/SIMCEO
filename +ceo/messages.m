@@ -11,6 +11,7 @@ classdef messages < handle
         terminate
         init
         sampleTime
+        tag
     end
 
     properties (Dependent)
@@ -23,12 +24,13 @@ classdef messages < handle
 
     methods
         
-            function self = messages(class_id)
+            function self = messages(class_id, tag)
 
                     self.p_class_id = class_id;
+                    self.tag = tag;
                     proto_msg = struct('class_id',self.p_class_id,...
                                        'method_id','',...
-                                       'tag','',...
+                                       'tag',self.tag,...
                                        'args',struct('args',[])); 
                     % Start
                     self.start     = proto_msg;
@@ -99,17 +101,17 @@ classdef messages < handle
                     jmsg = ceo.broker.sendrecv(self.start);
                     tag = char(jmsg);
                     self.class_id = tag;
-                    fprintf('@(%s)> Object created!\n',tag)
+                    fprintf('@(%s)> Object created!\n',self.tag)
                 end
 
                 function deal_init(self)
                     jmsg = ceo.broker.sendrecv(self.init);
-                    fprintf('@(messages)> Object calibrated!\n')
+                    fprintf('@(%s)> Object calibrated!\n',self.tag)
                 end
                 
                 function deal_terminate(self)
                     jmsg = ceo.broker.sendrecv(self.terminate);
-                    fprintf('@(%s)> %s\n',self.class_id,jmsg)
+                    fprintf('@(%s)> %s\n',self.tag,jmsg)
                     ceo.broker.setZmqResetFlag(true)
                 end
                 function deal_inputs(self, block)

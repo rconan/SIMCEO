@@ -350,7 +350,7 @@ function val = parse_value(varargin)
             pos = pos + 1;
             return;
         case {'Z','N'}
-            val = [];
+            val = NaN;
             pos = pos + 1;
             return;
     end
