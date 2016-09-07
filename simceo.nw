@@ -501,7 +501,7 @@ and the dictionnary implementation is
         elif key=="segment_piston":
             return self.src.piston(where="segments").tolist()
         elif key=="ee80":
-            return self.sensor.ee80()
+            return self.sensor.ee80().tolist()
         else:
             c = np.dot(self.comm_matrix[key],
                        self.sensor.valid_slopes.host(
