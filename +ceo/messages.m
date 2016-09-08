@@ -24,8 +24,7 @@ classdef messages < handle
 
     methods
         
-            function self = messages(class_id, tag)
-
+            function self = messages(class_id,tag)
                     self.p_class_id = class_id;
                     self.tag = tag;
                     proto_msg = struct('class_id',self.p_class_id,...
@@ -99,8 +98,7 @@ classdef messages < handle
                 function deal_start(self)
                     ceo.broker.resetZMQ()
                     jmsg = ceo.broker.sendrecv(self.start);
-                    tag = char(jmsg);
-                    self.class_id = tag;
+                    self.class_id = char(jmsg);
                     fprintf('@(%s)> Object created!\n',self.tag)
                 end
 
