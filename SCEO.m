@@ -43,8 +43,8 @@ block.SimStateCompliance = 'DefaultSimState';
 block.RegBlockMethod('Start', @Start);
 block.RegBlockMethod('Outputs', @Outputs);     % Required
 block.RegBlockMethod('Update', @Update);
-block.RegBlockMethod('Terminate', @Terminate); % Required
-block.RegBlockMethod('PostPropagationSetup', @PostPropagationSetup);
+block.RegBlockMethod('Terminate', @Terminate); % 
+%block.RegBlockMethod('PostPropagationSetup', @PostPropagationSetup);
 block.RegBlockMethod('InitializeConditions', @InitializeConditions);
 %end setup
 

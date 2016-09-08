@@ -5,6 +5,7 @@
 *.log
 *.out
 *.a
+*.pyc
 *~
 #*#
 *.dSYM
@@ -13,3 +14,4 @@
 *.original
 slprj
 etc/gmto*
+sandbox
