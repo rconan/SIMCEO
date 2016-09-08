@@ -775,7 +775,8 @@ end
 [~,hostname] = system('hostname');
 cmd = sprintf('%s ec2 create-tags --resources %s --tags Key=Name,Value=%s',...
               self.awspath,self.instance_id,...
-              [strtrim(username),'@',strtrim(hostname)]);
+              ['SIMCEO(',strtrim(username),...
+               '@',strtrim(hostname),')']);
 system(cmd);
 @ 
 \item setting up an alarm that terminates an instance idle for man than 4hours,
