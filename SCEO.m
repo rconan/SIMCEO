@@ -5,7 +5,7 @@ setup(block);
 function setup(block)
 
 msg_box   = get(gcbh,'UserData');
-fprintf('__ %s: SETUP __\n',msg_box.class_id)
+fprintf('__ %s: SETUP __\n',msg_box.tag)
 % Register number of ports
 %block.NumInputPorts  = 0;
 
@@ -43,24 +43,24 @@ block.SimStateCompliance = 'DefaultSimState';
 block.RegBlockMethod('Start', @Start);
 block.RegBlockMethod('Outputs', @Outputs);     % Required
 block.RegBlockMethod('Update', @Update);
-block.RegBlockMethod('Terminate', @Terminate); % Required
-block.RegBlockMethod('PostPropagationSetup', @PostPropagationSetup);
+block.RegBlockMethod('Terminate', @Terminate); % 
+%block.RegBlockMethod('PostPropagationSetup', @PostPropagationSetup);
 block.RegBlockMethod('InitializeConditions', @InitializeConditions);
 %end setup
 
 function PostPropagationSetup(block)
 msg_box   = get(gcbh,'UserData');
-fprintf('__ %s: PostPropagationSetup __\n',msg_box.class_id)
+fprintf('__ %s: PostPropagationSetup __\n',msg_box.tag)
 
 function InitializeConditions(block)
 msg_box   = get(gcbh,'UserData');
-fprintf('__ %s: InitializeConditions __\n',msg_box.class_id)
+fprintf('__ %s: InitializeConditions __\n',msg_box.tag)
 deal(msg_box,block,'init')
 
 function Start(block)
 
 msg_box   = get(gcbh,'UserData');
-fprintf('__ %s: START  __\n',msg_box.class_id)
+fprintf('__ %s: START  __\n',msg_box.tag)
 deal(msg_box,block,'start')
 %set(gcbh,'UserData',msg_box)
 tic
