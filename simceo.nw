@@ -645,6 +645,28 @@ class CalibrationMatrix(object):
         if self._n>0:
             iS[-self._n:] = 0
         self.M = np.dot(self.V,np.dot(np.diag(iS),self.U.T))
+@
+\subsection{The Sensor abstract class}
+\label{sec:sens-abstr-class}
+
+<<Sensor abstract class>>=
+class Sensor:
+    __metaclass__ = ABCMeta
+    @abstractmethod
+    def calibrate(self):
+        pass
+    @abstractmethod
+    def reset(self):
+        pass
+    @abstractmethod
+    def analyze(self):
+        pass
+    @abstractmethod
+    def propagate(self):
+        pass
+    @abstractmethod
+    def process(self):
+        pass
 @ 
 
 \section{The ceo Matlab package}
