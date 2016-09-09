@@ -757,6 +757,7 @@ function run_instance(self)
     <<launching an instance>>
     <<waiting for the running state>>
     <<waiting for initialization>>
+    <<branding instance>>
     <<setting up cloudwatch>>
     <<getting the public IP>>    
 end
@@ -789,6 +790,15 @@ toc
 if status~=0
     error('Starting AWS machine %s failed!',self.instance_id')
 end
+@ 
+\item setting up the instance name
+<<branding instance>>=
+[~,username] = system('whoami');
+[~,hostname] = system('hostname');
+cmd = sprintf('%s ec2 create-tags --resources %s --tags Key=Name,Value=%s',...
+              self.awspath,self.instance_id,...
+              [strtrim(username),'@',strtrim(hostname)]);
+system(cmd);
 @ 
 \item setting up an alarm that terminates an instance idle for man than 4hours,
 <<setting up cloudwatch>>=
@@ -934,8 +944,23 @@ function jmsg = sendrecv(send_msg)
     self = ceo.broker.getBroker();
     jsend_msg = saveubjson('',send_msg);
     zmq.core.send( self.socket, uint8(jsend_msg) );
-    rcev_msg = zmq.core.recv( self.socket , 2^24);
+    rcev_msg = -1;
+    count = 0;
+    while all(rcev_msg<0) && (count<15)
+        rcev_msg = zmq.core.recv( self.socket , 2^24);
+        if count>0
+            fprintf('@(broker)> sendrecv: Server busy (call #%d)!\n',15-count)
+        end
+        count = count + 1;
+    end
+    if count==15
+        set_param(gcs,'SimulationCommand','stop')
+    end
     jmsg = loadubjson(char(rcev_msg),'SimplifyCell',1);
+    if ~isstruct(jmsg) && strcmp(char(jmsg),'The server has failed!')
+        disp('Server issue!')
+        set_param(gcs,'SimulationCommand','stop')
+    end    
 end
 @ 
 \emph{resetZMQ} resets the ZeroMQ socket
@@ -983,6 +1008,7 @@ classdef messages < handle
         terminate
         init
         sampleTime
+        tag
     end
 
     properties (Dependent)
@@ -1008,12 +1034,13 @@ classdef messages < handle
 @ %def n_in dims_in n_out dims_out start update outputs terminate init
 There are five messages that corresponds to 4 four S--function routines:
 <<messages public methods>>=
-    function self = messages(class_id)
+    function self = messages(class_id,tag)
 
             self.p_class_id = class_id;
+            self.tag = tag;
             proto_msg = struct('class_id',self.p_class_id,...
                                'method_id','',...
-                               'tag','',...
+                               'tag',self.tag,...
                                'args',struct('args',[])); 
             % Start
             self.start     = proto_msg;
@@ -1091,19 +1118,18 @@ The \emph{deal} method sends the message to the CEO server, waits for the server
         function deal_start(self)
             ceo.broker.resetZMQ()
             jmsg = ceo.broker.sendrecv(self.start);
-            tag = char(jmsg);
-            self.class_id = tag;
-            fprintf('@(%s)> Object created!\n',tag)
+            self.class_id = char(jmsg);
+            fprintf('@(%s)> Object created!\n',self.tag)
         end
 
         function deal_init(self)
             jmsg = ceo.broker.sendrecv(self.init);
-            fprintf('@(messages)> Object calibrated!\n')
+            fprintf('@(%s)> Object calibrated!\n',self.tag)
         end
         
         function deal_terminate(self)
             jmsg = ceo.broker.sendrecv(self.terminate);
-            fprintf('@(%s)> %s\n',self.class_id,jmsg)
+            fprintf('@(%s)> %s\n',self.tag,jmsg)
             ceo.broker.setZmqResetFlag(true)
         end
 @ 
@@ -1160,7 +1186,7 @@ setup(block);
 function setup(block)
 
 msg_box   = get(gcbh,'UserData');
-fprintf('__ %s: SETUP __\n',msg_box.class_id)
+fprintf('__ %s: SETUP __\n',msg_box.tag)
 % Register number of ports
 %block.NumInputPorts  = 0;
 
@@ -1198,18 +1224,18 @@ block.SimStateCompliance = 'DefaultSimState';
 block.RegBlockMethod('Start', @Start);
 block.RegBlockMethod('Outputs', @Outputs);     % Required
 block.RegBlockMethod('Update', @Update);
-block.RegBlockMethod('Terminate', @Terminate); % Required
-block.RegBlockMethod('PostPropagationSetup', @PostPropagationSetup);
+block.RegBlockMethod('Terminate', @Terminate); % 
+%block.RegBlockMethod('PostPropagationSetup', @PostPropagationSetup);
 block.RegBlockMethod('InitializeConditions', @InitializeConditions);
 %end setup
 
 function PostPropagationSetup(block)
 msg_box   = get(gcbh,'UserData');
-fprintf('__ %s: PostPropagationSetup __\n',msg_box.class_id)
+fprintf('__ %s: PostPropagationSetup __\n',msg_box.tag)
 
 function InitializeConditions(block)
 msg_box   = get(gcbh,'UserData');
-fprintf('__ %s: InitializeConditions __\n',msg_box.class_id)
+fprintf('__ %s: InitializeConditions __\n',msg_box.tag)
 deal(msg_box,block,'init')
 @
 \subsubsection{Start}
@@ -1219,7 +1245,7 @@ deal(msg_box,block,'init')
 function Start(block)
 
 msg_box   = get(gcbh,'UserData');
-fprintf('__ %s: START  __\n',msg_box.class_id)
+fprintf('__ %s: START  __\n',msg_box.tag)
 deal(msg_box,block,'start')
 %set(gcbh,'UserData',msg_box)
 tic
