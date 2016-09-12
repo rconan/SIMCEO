@@ -613,8 +613,8 @@ The \emph{CalibrationMatrix} class is a container for several matrices:
 \item the truncated inverse $M$ of $D$, $M=V\Lambda U^T$ where
   \begin{eqnarray}
     \label{eq:2}
-      \Lambda_i &=& 1/S_i \forall i<n \nonumber\\
-      \Lambda_i &=& 0 \forall i\geq n \nonumber    
+      \Lambda_i &=& 1/S_i,\quad \forall i<n \nonumber\\
+      \Lambda_i &=& 0,\quad \forall i\geq n \nonumber    
   \end{eqnarray}
 \end{itemize}
 
@@ -738,7 +738,7 @@ function self = broker(varargin)
     <<broker client: AWS instance launch>>
 end
 @
-If not instance ID is given, a new machine is launched based on a given AWS AMI.
+If no instance ID is given, a new machine is launched based on a given AWS AMI.
 <<broker client: AWS instance launch>>=
 if isempty(self.instance_id)
     run_instance(self)
@@ -776,7 +776,7 @@ end
 instance = loadjson(instance_json);
 self.instance_id = instance.Instances{1}(1).InstanceId;
 @ 
-\item waiting for the confirmation that the instance is running,
+\item waiting for the confirmation that the instance is running (See page \pageref{itm:instanceRunning}),
 \item waiting for the confirmation that the instance has finished to initialize,
 <<waiting for initialization>>=
 fprintf('>>>> WAITING FOR AWS INSTANCE %s TO INITIALIZE ... \n',self.instance_id)
@@ -815,7 +815,7 @@ if status~=0
     error('Setting alarm for AWS machine %s failed!',self.instance_id')
 end
 @ 
-\item getting the public IP of the instance.
+\item getting the public IP of the instance (See page \pageref{itm:publicIP}).
 \end{enumerate}
 @
 \subsubsection{terminate\_instance}
@@ -860,7 +860,7 @@ if status~=0
     error('Starting AWS machine %s failed:\n%s',self.instance_id,cmdout)
 end
 @ 
-\item waiting for the confirmation that the instance is running
+\item waiting for the confirmation that the instance is running\label{itm:instanceRunning}
 <<waiting for the running state>>=
 fprintf('>>>> WAITING FOR AWS INSTANCE %s TO START ... \n',self.instance_id)
 tic
@@ -872,7 +872,7 @@ if status~=0
     error('Starting AWS machine %s failed!',self.instance_id')
 end
 @ 
-\item getting the public IP of the instance.
+\item getting the public IP of the instance\label{itm:publicIP}.
 <<getting the public IP>>=
 cmd = sprintf(['%s ec2 describe-instances --instance-ids %s',...
                ' --output text',...  
@@ -992,7 +992,7 @@ end
 \subsection{The dealer class}
 \label{sec:the-dealer-class}
 
-The \emph{messages} class contains the messages that are sent by the different functions of the S--function.
+The \emph{dealer} class contains the messages that are sent by the different functions of the S--function.
 Each CEO block instantiates a \emph{dealer} class and tailors the messages in the initialization of the block mask.
 It also holds the number of inputs and outputs of the block as well as the dimensions of the inputs and outputs.  
 <<dealer.m>>=
@@ -1100,7 +1100,8 @@ The names of the output ports are set with:
 <<dealer public methods>>=
 function output_names(self,port_handle)
     for k_out=1:self.n_out
-        set(port_handle.Outport(k_out), 'SignalNameFromLabel', self.outputs.args.outputs{k_out})
+        set(port_handle.Outport(k_out), ...
+	    'SignalNameFromLabel', self.outputs.args.outputs{k_out})
     end
 end
 @
@@ -1132,7 +1133,7 @@ function dump(self)
                'outputs',   self.outputs,...
                'terminate', self.terminate);
     delete([gcs,'#*.json'])
-    savejson('',s,strrep(strrep(strrep([gcb,'.json'],'/','#'),' ','_'),'\n','-'));
+    savejson('',s,strrep(strrep(strrep([gcb,'.json'],'/','#'),' ','_'),'\n','_'));
 end
 @ 
 \subsubsection{Private methods}
