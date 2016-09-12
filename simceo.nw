@@ -672,7 +672,12 @@ class Sensor:
 \section{The ceo Matlab package}
 \label{sec:ceo-matlab-package}
 
-
+\begin{figure}
+  \centering
+  \input{simceo.matlab.tex}
+  \caption{SIMCEO Matlab client flowchart.}
+  \label{fig:1}
+\end{figure}
 \subsection{The broker class}
 \label{sec:matlab-broker-class}
 
