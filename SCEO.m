@@ -64,7 +64,6 @@ msg_box   = get(gcbh,'UserData');
 fprintf('__ %s: START  __\n',msg_box.tag)
 deal(msg_box,block,'start')
 %set(gcbh,'UserData',msg_box)
-tic
 %end Start
 
 function Outputs(block)
@@ -82,7 +81,6 @@ function Update(block)
 
 function Terminate(block)
 
-toc
 msg_box = get(gcbh,'UserData');
 deal(msg_box,block,'terminate')
 %set(gcbh,'UserData',[])

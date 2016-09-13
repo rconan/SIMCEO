@@ -693,6 +693,7 @@ classdef (Sealed=true) broker < handle
         instance_id % The AWS instance ID number
         public_ip % The AWS instance public IP
         zmqReset % ZMQ connection reset flag
+	elapsedTime
     end
     
     properties (Access=private)
@@ -722,6 +723,9 @@ classdef (Sealed=true) broker < handle
         <<request and reply>>
 
         <<reset ZMQ socket>>
+
+        <<time spent>>
+        
     end
 
 end
@@ -733,6 +737,8 @@ function self = broker(varargin)
     self.ctx    = zmq.core.ctx_new();
     self.socket = zmq.core.socket(self.ctx, 'ZMQ_REQ');
     self.zmqReset = true;
+    
+    self.elapsedTime = 0;
 
     currentpath = mfilename('fullpath');
     k = strfind(currentpath,filesep);
@@ -947,6 +953,7 @@ end
 \emph{sendrecv} sends a request to the server and returns the server reply:
 <<request and reply>>= 
 function jmsg = sendrecv(send_msg)
+    tid = tic;
     self = ceo.broker.getBroker();
     jsend_msg = saveubjson('',send_msg);
     zmq.core.send( self.socket, uint8(jsend_msg) );
@@ -967,6 +974,7 @@ function jmsg = sendrecv(send_msg)
         disp('Server issue!')
         set_param(gcs,'SimulationCommand','stop')
     end    
+    self.elapsedTime = self.elapsedTime + toc(tid);
 end
 @ 
 \emph{resetZMQ} resets the ZeroMQ socket
@@ -991,6 +999,13 @@ end
 function setZmqResetFlag(val)
     self = ceo.broker.getBroker();
     self.zmqReset = val;
+end
+@ 
+Time spent communicating:
+<<time spent>>=
+function timeSpent()
+    self = ceo.broker.getBroker();
+    fprintf('@(broker)> Time spent communicating with the server: %.3fs\n',self.elapsedTime)
 end
 @ 
 
@@ -1023,6 +1038,7 @@ classdef dealer < handle
 
     properties (Access=private)
         p_class_id
+        tid
     end
 
     methods
@@ -1146,6 +1162,7 @@ end
 
 <<dealer private methods>>=        
 function deal_start(self)
+    self.tid = tic;
     ceo.broker.resetZMQ()
     jmsg = ceo.broker.sendrecv(self.start);
     self.class_id = char(jmsg);
@@ -1162,6 +1179,8 @@ function deal_terminate(self)
     dump(self)
     fprintf('@(%s)> %s\n',self.tag,jmsg)
     ceo.broker.setZmqResetFlag(true)
+    ceo.broker.timeSpent()
+    toc(self.tid)
 end
 @ 
 \emph{deal\_inputs} reads the block inputs and affects the input data to the corresponding field in the update message:
@@ -1280,7 +1299,6 @@ msg_box   = get(gcbh,'UserData');
 fprintf('__ %s: START  __\n',msg_box.tag)
 deal(msg_box,block,'start')
 %set(gcbh,'UserData',msg_box)
-tic
 %end Start
 @
 \subsubsection{Outputs}
@@ -1306,7 +1324,6 @@ function Update(block)
 
 function Terminate(block)
 
-toc
 msg_box = get(gcbh,'UserData');
 deal(msg_box,block,'terminate')
 %set(gcbh,'UserData',[])
