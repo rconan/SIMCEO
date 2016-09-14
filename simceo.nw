@@ -1059,7 +1059,7 @@ There are five messages that corresponds to 4 four S--function routines:
 function self = dealer(class_id,tag)
 
     self.p_class_id = class_id;
-    self.tag = tag;
+    self.tag = strrep(tag,char(10),' ');
     proto_msg = struct('class_id',self.p_class_id,...
                        'method_id','',...
                        'tag',self.tag,...
@@ -1154,7 +1154,7 @@ function dump(self)
                'outputs',   self.outputs,...
                'terminate', self.terminate);
     delete([gcs,'#*.json'])
-    savejson('',s,strrep(strrep(strrep([gcb,'.json'],'/','#'),' ','_'),'\n','_'));
+    savejson('',s,strrep(strrep(strrep([gcb,'.json'],'/','#'),' ','_'),char(10),'_'));
 end
 @ 
 \subsubsection{Private methods}
