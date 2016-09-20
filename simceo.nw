@@ -207,7 +207,7 @@ def __getitem__(self,key):
         else:
             self.ops.append( SOpticalPath( len(self.ops) ,
                                            self.sgmt.gmt ,
-                                           self.satm.atm ) )            
+                                           self.satm ) )            
             self.n_op = len(self.ops)
             return self.ops[-1]
     else:
@@ -354,9 +354,11 @@ class SAtmosphere(Sfunction):
 
     def __init__(self):
         self.atm = None
+        self.samplingTime = None
 
-    def Start(self,atmosphere_args=None):
-        self.atm = ceo.GmtAtmosphere( **atmosphere_args )
+    def Start(self,samplingTime=1.0, **kwargs):
+        self.atm = ceo.JGmtAtmosphere( **kwargs )
+        self.samplingTime = samplingTime
         return "ATM"
 
     def Terminate(self, args=None):
@@ -381,10 +383,10 @@ The \emph{SOpticalClass} gathers a source object \emph{src}, the GMT model objec
 <<SOpticalPath>>=
 class SOpticalPath(Sfunction):
 
-    def __init__(self, idx, gmt, atm):
+    def __init__(self, idx, gmt, satm):
         self.idx = idx
         self.gmt = gmt
-        self.atm = atm
+        self.satm = satm
 	self.sensor = None
         self.D = {}
 @
@@ -409,6 +411,7 @@ The message that triggers the call to the \emph{Start} method is
     def Start(self,source_args=None, sensor_class=None, sensor_args=None, 
               calibration_source_args=None, miscellaneous_args=None):
         print miscellaneous_args
+        self.exposureTime = miscellaneous_args['exposure_time']
         self.src = ceo.Source( **source_args )
         if sensor_class is not None:
 
@@ -468,6 +471,10 @@ The message that triggers the call to the \emph{Update} method is
         #print "WFE RMS: %fnm"%self.src.wavefront.rms(-9)
 	if self.sensor is not None:
 	    self.sensor.reset()
+            print self.satm.atm
+            if self.satm.atm is not None:
+                nStep = self.exposureTime/self.satm.samplingTime
+                print nStep
             self.sensor.propagate(self.src)
             #self.sensor.readOut(T,0)
             self.sensor.process()
