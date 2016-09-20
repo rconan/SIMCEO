@@ -187,8 +187,9 @@ method_id = jmsg["method_id"]
 try:
     args_out = getattr( self[class_id], method_id )( **jmsg["args"] )
 except Exception as E:
-    print "The server as failed:"
-    print E
+    print "The server has failed:"
+    print(E)
+    print(E.args)
     print "Recovering gracefully..."
     class_id = ""
     args_out = "The server has failed!"
@@ -412,6 +413,9 @@ The message that triggers the call to the \emph{Start} method is
               calibration_source_args=None, miscellaneous_args=None):
         print miscellaneous_args
         self.exposureTime = miscellaneous_args['exposure_time']
+        self.propagateThroughAtm = miscellaneous_args['propagate_through_atmosphere']
+        print 'propagateThroughAtm'
+        print self.propagateThroughAtm
         self.src = ceo.Source( **source_args )
         if sensor_class is not None:
 
@@ -430,6 +434,7 @@ The message that triggers the call to the \emph{Start} method is
 
             self.poke_matrix = {}
             self.comm_matrix = {}
+            self.stime = 0.0
 
         return "OP"+str(self.idx)
 @
@@ -466,18 +471,35 @@ The message that triggers the call to the \emph{Update} method is
 <<SOpticalPath>>=
     def Update(self, inputs=None):
         #print "Updating OP!"
-        self.src.reset()
-        self.gmt.propagate(self.src)
-        #print "WFE RMS: %fnm"%self.src.wavefront.rms(-9)
-	if self.sensor is not None:
-	    self.sensor.reset()
-            print self.satm.atm
-            if self.satm.atm is not None:
-                nStep = self.exposureTime/self.satm.samplingTime
-                print nStep
-            self.sensor.propagate(self.src)
-            #self.sensor.readOut(T,0)
+        if self.propagateThroughAtm:
+            tid = ceo.StopWatch()
+            tid.tic()
+            nStep = int(self.exposureTime/self.satm.samplingTime)
+            print nStep
+            delta = self.src.rays.L/(self.src.rays.N_L-1)
+            nPx   = self.src.rays.N_L
+            __src__ = ceo.Source('R',zenith=np.zeros(self.src.N_SRC),resolution=(nPx,nPx))
+            W = ceo.Complex_amplitude(__src__)
+            self.src.reset()
+            self.gmt.propagate(self.src)
+            W.reset(wavefront=self.src.wavefront)            
+            self.sensor.reset()
+            for kStep in range(nStep):
+                self.src.wavefront.reset(wavefront=W)
+                self.satm.atm.ray_tracing(self.src,delta,nPx,delta,nPx,self.stime)
+                self.stime += self.satm.samplingTime
+                self.sensor.propagate(self.src)
             self.sensor.process()
+            tid.ping()
+        else:
+            self.src.reset()
+            self.gmt.propagate(self.src)
+            #print "WFE RMS: %fnm"%self.src.wavefront.rms(-9)
+            if self.sensor is not None:
+                self.sensor.reset()
+                self.sensor.propagate(self.src)
+                #self.sensor.readOut(T,0)
+                self.sensor.process()
 @
 \paragraph{Outputs}
 
