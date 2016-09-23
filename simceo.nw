@@ -86,8 +86,16 @@ import numpy as np
 from collections import OrderedDict
 import os
 import shelve
+import traceback
 
 SIMCEOPATH = os.path.abspath(os.path.dirname(__file__))
+
+class testComm:
+    def __init__(self):
+        pass
+    def hello(self,N=1):
+        data = np.ones(N)
+        return dict(data=data.tolist())
 
 class Timer(object):
     def __init__(self, name=None):
@@ -185,13 +193,16 @@ The class method is invoked with:
 <<broker run details>>=
 class_id  = jmsg["class_id"]
 method_id = jmsg["method_id"]
+#tid = ceo.StopWatch()
 try:
+    #tid.tic()
     args_out = getattr( self[class_id], method_id )( **jmsg["args"] )
+    #tid.toc()
+    #print "%s->%s: %.2f"%(class_id,method_id,tid.elapsedTime) 
 except Exception as E:
-    print "The server has failed:"
-    print(E)
-    print(E.args)
-    print "Recovering gracefully..."
+    print "@(broker)> The server has failed!"
+    traceback.print_exc()
+    print "@(broker)> Recovering gracefully..."
     class_id = ""
     args_out = "The server has failed!"
 @ 
@@ -212,6 +223,8 @@ def __getitem__(self,key):
                                            self.satm ) )            
             self.n_op = len(self.ops)
             return self.ops[-1]
+    elif key=='testComm':
+        return testComm()
     else:
         raise KeyError("Available keys are: GMT, ATM or OP")
 @ 
@@ -378,12 +391,12 @@ class SAtmosphere(Sfunction):
 
         for op in self.ops:
             if op.propagateThroughAtm:
-                sys.stdout.write("\r@(SAtmosphere)> Simulation time: %.3gs"%op.stime)
-                sys.stdout.flush()
+                #sys.stdout.write("\r@(SAtmosphere)> Simulation time: %.3gs"%op.stime)
+                #sys.stdout.flush()
                 #tid = ceo.StopWatch()
-                #tid.tic()
                 delta = op.src.rays.L/(op.src.rays.N_L-1)
                 nPx   = op.src.rays.N_L
+                #tid.tic()
                 op.src.reset()
                 op.gmt.propagate(op.src)
                 self.atm.ray_tracing(op.src,delta,nPx,delta,nPx,op.stime)
@@ -489,7 +502,7 @@ The message that triggers the call to the \emph{Update} method is
     def Update(self, inputs=None):
         #print "Updating OP!"
         if self.propagateThroughAtm:
-            print "\n@(SOpticalPath)> Simulation time: %gs\n"%self.stime
+            #print "\n@(SOpticalPath)> Simulation time: %gs\n"%self.stime
             if self.sensor is not None:
                 self.sensor.process()
                 self.sensor.reset()
