@@ -764,7 +764,7 @@ classdef (Sealed=true) broker < handle
     end
 
 end
-@ %def awspath instance_id ctx socket public_ip zmqReset instance_end_state etc
+@ %def awspath instance_id public_ip zmqReset 
 The Matlab broker class starts an AWS machine and sets--up ZeroMQ context and socket.
 <<broker client>>=
 function self = broker(varargin)
@@ -841,7 +841,8 @@ end
 [~,hostname] = system('hostname');
 cmd = sprintf('%s ec2 create-tags --resources %s --tags Key=Name,Value=%s',...
               self.awspath,self.instance_id,...
-              [strtrim(username),'@',strtrim(hostname)]);
+              ['SIMCEO(',strtrim(username),...
+               '@',strtrim(hostname),')']);
 system(cmd);
 @ 
 \item setting up an alarm that terminates an instance idle for man than 4hours,
@@ -1032,14 +1033,14 @@ function setZmqResetFlag(val)
 end
 @ 
 
-\subsection{The messages class}
-\label{sec:the-messages-class}
+\subsection{The dealer class}
+\label{sec:the-dealer-class}
 
 The \emph{messages} class contains the messages that are sent by the different functions of the S--function.
-Each CEO block instantiates a \emph{messages} class and tailors the messages in the initialization of the block mask.
+Each CEO block instantiates a \emph{dealer} class and tailors the messages in the initialization of the block mask.
 It also holds the number of inputs and outputs of the block as well as the dimensions of the inputs and outputs.  
-<<messages.m>>=
-classdef messages < handle
+<<dealer.m>>=
+classdef dealer < handle
 
     properties
         n_in
@@ -1065,120 +1066,144 @@ classdef messages < handle
 
     methods
         
-        <<messages public methods>>
+        <<dealer public methods>>
             
     end
     
     methods (Access=private)
         
-        <<messages private methods>>
+        <<dealer private methods>>
 
     end
  end
 @ %def n_in dims_in n_out dims_out start update outputs terminate init
 There are five messages that corresponds to 4 four S--function routines:
-<<messages public methods>>=
-    function self = messages(class_id,tag)
+<<dealer public methods>>=
+function self = dealer(class_id,tag)
 
-            self.p_class_id = class_id;
-            self.tag = tag;
-            proto_msg = struct('class_id',self.p_class_id,...
-                               'method_id','',...
-                               'tag',self.tag,...
-                               'args',struct('args',[])); 
-            % Start
-            self.start     = proto_msg;
-            self.start.method_id = 'Start';
-            % InitializeConditions
-            self.init      = proto_msg;
-            self.init .method_id = 'InitializeConditions'; 
-            % Outputs
-            self.update    = proto_msg;
-            self.update.method_id  = 'Update';
-            self.outputs   = proto_msg;
-            self.outputs.method_id = 'Outputs';
-            % Terminate
-            self.terminate = proto_msg;
-            self.terminate.method_id = 'Terminate';
-        end
+    self.p_class_id = class_id;
+    self.tag = tag;
+    proto_msg = struct('class_id',self.p_class_id,...
+                       'method_id','',...
+                       'tag',self.tag,...
+                       'args',struct('args',[])); 
+    % Start
+    self.start     = proto_msg;
+    self.start.method_id = 'Start';
+    % InitializeConditions
+    self.init      = proto_msg;
+    self.init .method_id = 'InitializeConditions'; 
+    % Outputs
+    self.update    = proto_msg;
+    self.update.method_id  = 'Update';
+    self.outputs   = proto_msg;
+    self.outputs.method_id = 'Outputs';
+    % Terminate
+    self.terminate = proto_msg;
+    self.terminate.method_id = 'Terminate';
+end
 @ 
 The \emph{class\_id} property triggers an update of all the messages:         
-<<messages public methods>>=
-        function val = get.class_id(self)
-            val = self.p_class_id;
-        end
-        function set.class_id(self,val)
-            self.p_class_id = val;
-            self.start.class_id     = val;
-            self.init.class_id      = val;
-            self.update.class_id    = val;
-            self.outputs.class_id   = val;
-            self.terminate.class_id = val;
-        end
+<<dealer public methods>>=
+function val = get.class_id(self)
+    val = self.p_class_id;
+end
+function set.class_id(self,val)
+    self.p_class_id = val;
+    self.start.class_id     = val;
+    self.init.class_id      = val;
+    self.update.class_id    = val;
+    self.outputs.class_id   = val;
+    self.terminate.class_id = val;
+end
 @
-\subsubsection{IO\_setup}
-\label{sec:io_setup}
+\subsubsection{Public methods}
+\label{sec:public-methods}
 
 The properties of the blocks inputs and outputs are set with:
-<<messages public methods>>=        
-        function IO_setup(self,block)
-            block.NumInputPorts  = self.n_in;
-            for k_in=1:self.n_in
-                block.InputPort(k_in).Dimensions  = self.dims_in{k_in};
-                block.InputPort(k_in).DatatypeID  = 0;  % double
-                block.InputPort(k_in).Complexity  = 'Real';
-                block.InputPort(k_in).DirectFeedthrough = true;
-            end
-            block.NumOutputPorts = self.n_out;
-            for k_out=1:self.n_out
-                block.OutputPort(k_out).Dimensions   = self.dims_out{k_out};
-                block.OutputPort(k_out).DatatypeID   = 0; % double
-                block.OutputPort(k_out).Complexity   = 'Real';
-                block.OutputPort(k_out).SamplingMode = 'sample';
-            end
-            block.SampleTimes = self.sampleTime;
-        end
+<<dealer public methods>>=        
+function IO_setup(self,block)
+    block.NumInputPorts  = self.n_in;
+    for k_in=1:self.n_in
+        block.InputPort(k_in).Dimensions  = self.dims_in{k_in};
+        block.InputPort(k_in).DatatypeID  = 0;  % double
+        block.InputPort(k_in).Complexity  = 'Real';
+        block.InputPort(k_in).DirectFeedthrough = true;
+    end
+    block.NumOutputPorts = self.n_out;
+    for k_out=1:self.n_out
+        block.OutputPort(k_out).Dimensions   = self.dims_out{k_out};
+        block.OutputPort(k_out).DatatypeID   = 0; % double
+        block.OutputPort(k_out).Complexity   = 'Real';
+        block.OutputPort(k_out).SamplingMode = 'sample';
+    end
+    block.SampleTimes = self.sampleTime;
+end
+@ 
+The names of the output ports are set with:
+<<dealer public methods>>=
+function output_names(self,port_handle)
+    for k_out=1:self.n_out
+        set(port_handle.Outport(k_out), 'SignalNameFromLabel', self.outputs.args.outputs{k_out})
+    end
+end
 @
 The \emph{deal} method sends the message to the CEO server, waits for the server replies and process the reply.
-<<messages public methods>>=        
-        function deal(self,block,tag)
-            switch tag
-              case 'start'
-                deal_start(self);
-              case 'init'
-                deal_init(self);
-              case 'IO'
-                deal_inputs(self, block);
-                deal_outputs(self, block);
-              case 'terminate'
-                deal_terminate(self);
-              otherwise
-                fprintf(['@(messages)> deal: Unknown tag;',...
-                         ' valid tags are: start, init, IO and terminate!'])
-            end
-        end
+<<dealer public methods>>=        
+function deal(self,block,tag)
+    switch tag
+      case 'start'
+        deal_start(self);
+      case 'init'
+        deal_init(self);
+      case 'IO'
+        deal_inputs(self, block);
+        deal_outputs(self, block);
+      case 'terminate'
+        deal_terminate(self);
+      otherwise
+        fprintf(['@(dealer)> deal: Unknown tag;',...
+                 ' valid tags are: start, init, IO and terminate!'])
+    end
+end
+@
+The messages are concatenated into a single json file with:
+<<dealer public methods>>=
+function dump(self)
+    s = struct('start',     self.start,...
+               'init',      self.init,...
+               'update',    self.update,...
+               'outputs',   self.outputs,...
+               'terminate', self.terminate);
+    delete([gcs,'#*.json'])
+    savejson('',s,strrep(strrep(strrep([gcb,'.json'],'/','#'),' ','_'),'\n','-'));
+end
 @ 
-<<messages private methods>>=        
-        function deal_start(self)
-            ceo.broker.resetZMQ()
-            jmsg = ceo.broker.sendrecv(self.start);
-            self.class_id = char(jmsg);
-            fprintf('@(%s)> Object created!\n',self.tag)
-        end
+\subsubsection{Private methods}
+\label{sec:private-methods}
 
-        function deal_init(self)
-            jmsg = ceo.broker.sendrecv(self.init);
-            fprintf('@(%s)> Object calibrated!\n',self.tag)
-        end
-        
-        function deal_terminate(self)
-            jmsg = ceo.broker.sendrecv(self.terminate);
-            fprintf('@(%s)> %s\n',self.tag,jmsg)
-            ceo.broker.setZmqResetFlag(true)
-        end
+<<dealer private methods>>=        
+function deal_start(self)
+    ceo.broker.resetZMQ()
+    jmsg = ceo.broker.sendrecv(self.start);
+    self.class_id = char(jmsg);
+    fprintf('@(%s)> Object created!\n',self.tag)
+end
+
+function deal_init(self)
+    ceo.broker.sendrecv(self.init);
+    fprintf('@(%s)> Object calibrated!\n',self.tag)
+end
+
+function deal_terminate(self)
+    jmsg = ceo.broker.sendrecv(self.terminate);
+    dump(self)
+    fprintf('@(%s)> %s\n',self.tag,jmsg)
+    ceo.broker.setZmqResetFlag(true)
+end
 @ 
 \emph{deal\_inputs} reads the block inputs and affects the input data to the corresponding field in the update message:
-<<messages private methods>>=                
+<<dealer private methods>>=                
         function deal_inputs(self, block)
             if self.n_in>0
                 fields = fieldnames(self.update.args.inputs_args);
@@ -1191,7 +1216,7 @@ The \emph{deal} method sends the message to the CEO server, waits for the server
         end
 @ 
 \emph{deal\_outputs} affects the inputs from the CEO server to the corresponding data field of the block outputs:
-<<messages private methods>>=                
+<<dealer private methods>>=                
         function deal_outputs(self, block)
             if self.n_out>0
                 outputs_msg = ceo.broker.sendrecv(self.outputs);
@@ -1269,13 +1294,14 @@ block.RegBlockMethod('Start', @Start);
 block.RegBlockMethod('Outputs', @Outputs);     % Required
 block.RegBlockMethod('Update', @Update);
 block.RegBlockMethod('Terminate', @Terminate); % 
-%block.RegBlockMethod('PostPropagationSetup', @PostPropagationSetup);
+block.RegBlockMethod('PostPropagationSetup', @PostPropagationSetup);
 block.RegBlockMethod('InitializeConditions', @InitializeConditions);
 %end setup
 
 function PostPropagationSetup(block)
 msg_box   = get(gcbh,'UserData');
 fprintf('__ %s: PostPropagationSetup __\n',msg_box.tag)
+output_names(msg_box,get(gcbh, 'PortHandles'))
 
 function InitializeConditions(block)
 msg_box   = get(gcbh,'UserData');
@@ -1321,7 +1347,7 @@ function Terminate(block)
 toc
 msg_box = get(gcbh,'UserData');
 deal(msg_box,block,'terminate')
-set(gcbh,'UserData',[])
+%set(gcbh,'UserData',[])
 %end Terminate
 @ 
 

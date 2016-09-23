@@ -8,7 +8,7 @@ python: simceo.nw simceo.py
 matlab: simceo.nw maskdoc
 	mkdir -p +ceo
 	$(TANGLE) -Rbroker.m simceo.nw > +ceo/broker.m
-	$(TANGLE) -Rmessages.m simceo.nw > +ceo/messages.m
+	$(TANGLE) -Rdealer.m simceo.nw > +ceo/dealer.m
 	$(TANGLE) -RSCEO.m simceo.nw > SCEO.m
 maskdoc: simceo.nw
 	mkdir -p masks
