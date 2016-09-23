@@ -1005,7 +1005,9 @@ Time spent communicating:
 <<time spent>>=
 function timeSpent()
     self = ceo.broker.getBroker();
-    fprintf('@(broker)> Time spent communicating with the server: %.3fs\n',self.elapsedTime)
+    fprintf('@(broker)> Time spent communicating with the server: %.3fs\n',...
+    			self.elapsedTime)
+    self.elapsedTime = 0;
 end
 @ 
 
@@ -1162,25 +1164,26 @@ end
 
 <<dealer private methods>>=        
 function deal_start(self)
-    self.tid = tic;
     ceo.broker.resetZMQ()
     jmsg = ceo.broker.sendrecv(self.start);
     self.class_id = char(jmsg);
     fprintf('@(%s)> Object created!\n',self.tag)
+    self.tid = tic;
 end
 
 function deal_init(self)
     ceo.broker.sendrecv(self.init);
     fprintf('@(%s)> Object calibrated!\n',self.tag)
+    self.tid = tic;
 end
 
 function deal_terminate(self)
+    toc(self.tid)
     jmsg = ceo.broker.sendrecv(self.terminate);
     dump(self)
     fprintf('@(%s)> %s\n',self.tag,jmsg)
     ceo.broker.setZmqResetFlag(true)
     ceo.broker.timeSpent()
-    toc(self.tid)
 end
 @ 
 \emph{deal\_inputs} reads the block inputs and affects the input data to the corresponding field in the update message:
