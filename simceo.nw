@@ -76,6 +76,7 @@ The messages exchanged between the client and the server are formatted according
 
 The python interface consists in the module \emph{simulink}:
 <<simceo.py>>=
+import sys
 import threading
 import time
 import zmq
@@ -85,8 +86,16 @@ import numpy as np
 from collections import OrderedDict
 import os
 import shelve
+import traceback
 
 SIMCEOPATH = os.path.abspath(os.path.dirname(__file__))
+
+class testComm:
+    def __init__(self):
+        pass
+    def hello(self,N=1):
+        data = np.ones(N)
+        return dict(data=data.tolist())
 
 class Timer(object):
     def __init__(self, name=None):
@@ -142,10 +151,10 @@ class broker(threading.Thread):
         self.address = "tcp://*:3650"
         self.socket.bind(self.address)
         
-        self.sgmt = SGMT()
-        self.satm = SAtmosphere()
         self.ops = []
         self.n_op = 0
+        self.sgmt = SGMT()
+        self.satm = SAtmosphere(self.ops)
 
     def __del__(self):
 
@@ -184,12 +193,16 @@ The class method is invoked with:
 <<broker run details>>=
 class_id  = jmsg["class_id"]
 method_id = jmsg["method_id"]
+#tid = ceo.StopWatch()
 try:
+    #tid.tic()
     args_out = getattr( self[class_id], method_id )( **jmsg["args"] )
+    #tid.toc()
+    #print "%s->%s: %.2f"%(class_id,method_id,tid.elapsedTime) 
 except Exception as E:
-    print "The server as failed:"
-    print E
-    print "Recovering gracefully..."
+    print "@(broker)> The server has failed!"
+    traceback.print_exc()
+    print "@(broker)> Recovering gracefully..."
     class_id = ""
     args_out = "The server has failed!"
 @ 
@@ -207,9 +220,11 @@ def __getitem__(self,key):
         else:
             self.ops.append( SOpticalPath( len(self.ops) ,
                                            self.sgmt.gmt ,
-                                           self.satm.atm ) )            
+                                           self.satm ) )            
             self.n_op = len(self.ops)
             return self.ops[-1]
+    elif key=='testComm':
+        return testComm()
     else:
         raise KeyError("Available keys are: GMT, ATM or OP")
 @ 
@@ -352,11 +367,14 @@ The \emph{SAtmosphere} class is the interface class between a CEO \emph{GmtAtmos
 <<SAtmosphere>>=
 class SAtmosphere(Sfunction):
 
-    def __init__(self):
+    def __init__(self, ops):
+        self.ops = ops
         self.atm = None
+        self.samplingTime = None
 
-    def Start(self,atmosphere_args=None):
-        self.atm = ceo.GmtAtmosphere( **atmosphere_args )
+    def Start(self,samplingTime=1.0, **kwargs):
+        self.atm = ceo.JGmtAtmosphere( **kwargs )
+        self.samplingTime = samplingTime
         return "ATM"
 
     def Terminate(self, args=None):
@@ -370,7 +388,22 @@ class SAtmosphere(Sfunction):
         pass
 
     def Update(self, args=None):
-        pass
+
+        for op in self.ops:
+            if op.propagateThroughAtm:
+                #sys.stdout.write("\r@(SAtmosphere)> Simulation time: %.3gs"%op.stime)
+                #sys.stdout.flush()
+                #tid = ceo.StopWatch()
+                delta = op.src.rays.L/(op.src.rays.N_L-1)
+                nPx   = op.src.rays.N_L
+                #tid.tic()
+                op.src.reset()
+                op.gmt.propagate(op.src)
+                self.atm.ray_tracing(op.src,delta,nPx,delta,nPx,op.stime)
+                op.stime += self.samplingTime
+                if op.sensor is not None:
+                    op.sensor.propagate(op.src)
+                #tid.ping()
 @ 
 
 \subsubsection{The SOpticalPath class}
@@ -381,10 +414,10 @@ The \emph{SOpticalClass} gathers a source object \emph{src}, the GMT model objec
 <<SOpticalPath>>=
 class SOpticalPath(Sfunction):
 
-    def __init__(self, idx, gmt, atm):
+    def __init__(self, idx, gmt, satm):
         self.idx = idx
         self.gmt = gmt
-        self.atm = atm
+        self.satm = satm
 	self.sensor = None
         self.D = {}
 @
@@ -409,6 +442,10 @@ The message that triggers the call to the \emph{Start} method is
     def Start(self,source_args=None, sensor_class=None, sensor_args=None, 
               calibration_source_args=None, miscellaneous_args=None):
         print miscellaneous_args
+        self.exposureTime = miscellaneous_args['exposure_time']
+        self.propagateThroughAtm = miscellaneous_args['propagate_through_atmosphere']
+        print 'propagateThroughAtm'
+        print self.propagateThroughAtm
         self.src = ceo.Source( **source_args )
         if sensor_class is not None:
 
@@ -427,6 +464,7 @@ The message that triggers the call to the \emph{Start} method is
 
             self.poke_matrix = {}
             self.comm_matrix = {}
+            self.stime = 0.0
 
         return "OP"+str(self.idx)
 @
@@ -463,14 +501,20 @@ The message that triggers the call to the \emph{Update} method is
 <<SOpticalPath>>=
     def Update(self, inputs=None):
         #print "Updating OP!"
-        self.src.reset()
-        self.gmt.propagate(self.src)
-        #print "WFE RMS: %fnm"%self.src.wavefront.rms(-9)
-	if self.sensor is not None:
-	    self.sensor.reset()
-            self.sensor.propagate(self.src)
-            #self.sensor.readOut(T,0)
-            self.sensor.process()
+        if self.propagateThroughAtm:
+            #print "\n@(SOpticalPath)> Simulation time: %gs\n"%self.stime
+            if self.sensor is not None:
+                self.sensor.process()
+                self.sensor.reset()
+        else:
+            self.src.reset()
+            self.gmt.propagate(self.src)
+            #print "WFE RMS: %fnm"%self.src.wavefront.rms(-9)
+            if self.sensor is not None:
+                self.sensor.reset()
+                self.sensor.propagate(self.src)
+                #self.sensor.readOut(T,0)
+                self.sensor.process()
 @
 \paragraph{Outputs}
 
