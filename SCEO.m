@@ -69,14 +69,14 @@ deal(msg_box,block,'start')
 function Outputs(block)
 
 msg_box   = get(gcbh,'UserData');
-%fprintf('__ %s: OUTPUTS __\n',msg_box.class_id)
-
+%fprintf('__ %s: OUTPUTS __\n',msg_box.tag)
 deal(msg_box,block,'IO')
-
 %end Outputs
 
 function Update(block)
 
+%msg_box   = get(gcbh,'UserData');
+%fprintf('__ %s: UPDATE __\n',msg_box.tag)
 %end Update
 
 function Terminate(block)
