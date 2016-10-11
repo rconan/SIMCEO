@@ -89,6 +89,7 @@ import shelve
 import traceback
 
 SIMCEOPATH = os.path.abspath(os.path.dirname(__file__))
+currentTime = 0.0;
 
 class testComm:
     def __init__(self):
@@ -153,8 +154,8 @@ class broker(threading.Thread):
         
         self.ops = []
         self.n_op = 0
-        self.sgmt = SGMT()
         self.satm = SAtmosphere(self.ops)
+        self.sgmt = SGMT(self.ops, self.satm)
 
     def __del__(self):
 
@@ -180,8 +181,13 @@ def run(self):
 waits for a request from a Simulink S--function:
 <<broker run details>>=
 msg = self.socket.recv()
-jmsg = ubjson.loadb(msg)
-#print jmsg
+#jmsg = ubjson.loadb(msg)
+try:
+    jmsg = ubjson.loadb(msg)
+except Exception as E:
+    #print "Error raised by ubjson.loadb by that does not stop us!"
+    print msg
+    raise
 @
 The message received from the S--function contains
 \begin{itemize}
@@ -191,8 +197,11 @@ The message received from the S--function contains
 \end{itemize}
 The class method is invoked with:
 <<broker run details>>=
+global currentTime
+currentTime = jmsg["currentTime"]
 class_id  = jmsg["class_id"]
 method_id = jmsg["method_id"]
+print "@ %.3fs: %s->%s"%(currentTime,jmsg["tag"],method_id)
 #tid = ceo.StopWatch()
 try:
     #tid.tic()
@@ -201,6 +210,7 @@ try:
     #print "%s->%s: %.2f"%(class_id,method_id,tid.elapsedTime) 
 except Exception as E:
     print "@(broker)> The server has failed!"
+    print jmsg
     traceback.print_exc()
     print "@(broker)> Recovering gracefully..."
     class_id = ""
@@ -279,8 +289,10 @@ The \emph{SGMT} class is the interface class between a CEO \emph{GMT\_MX} object
 <<SGMT>>=
 class SGMT(Sfunction):
 
-    def __init__(self):
-        self.gmt = ceo.GMT_MX()
+    def __init__(self, ops, satm):
+        self.gmt  = ceo.GMT_MX()
+        self.satm = satm
+        self.ops  = ops
 
     def Terminate(self, args=None):
         self.gmt = ceo.GMT_MX()
@@ -346,6 +358,22 @@ The message that triggers the call to the \emph{Update} method is
             elif key=="mode_coefs":
                 self.gmt[mirror].modes.a = np.copy( data, order='C')
                 self.gmt[mirror].modes.update()
+        for op in self.ops:
+            op.src.reset()
+            self.gmt.propagate(op.src)
+            if op.propagateThroughAtm:
+                #sys.stdout.write("\r@(SAtmosphere)> Simulation time: %.3gs"%op.stime)
+                #sys.stdout.flush()
+                #tid = ceo.StopWatch()
+                delta = op.src.rays.L/(op.src.rays.N_L-1)
+                nPx   = op.src.rays.N_L
+                #tid.tic()
+                self.satm.atm.ray_tracing(op.src,delta,nPx,delta,nPx,currentTime)
+                #op.stime += self.satm.samplingTime
+                #tid.ping()
+            if op.sensor is not None and op.enable_sensor:
+                #print "Integrating!"
+                op.sensor.propagate(op.src)
 @
 \paragraph{InitializeConditions}
 
@@ -388,7 +416,9 @@ class SAtmosphere(Sfunction):
         pass
 
     def Update(self, args=None):
-
+        pass
+@ 
+<<opt-out>>=
         for op in self.ops:
             if op.propagateThroughAtm:
                 #sys.stdout.write("\r@(SAtmosphere)> Simulation time: %.3gs"%op.stime)
@@ -465,6 +495,7 @@ The message that triggers the call to the \emph{Start} method is
             self.poke_matrix = {}
             self.comm_matrix = {}
             self.stime = 0.0
+            self.enable_sensor = False
 
         return "OP"+str(self.idx)
 @
@@ -501,20 +532,20 @@ The message that triggers the call to the \emph{Update} method is
 <<SOpticalPath>>=
     def Update(self, inputs=None):
         #print "Updating OP!"
+        pass
+@ 
+<<opt-out>>=
         if self.propagateThroughAtm:
             #print "\n@(SOpticalPath)> Simulation time: %gs\n"%self.stime
-            if self.sensor is not None:
-                self.sensor.process()
-                self.sensor.reset()
+            pass
         else:
             self.src.reset()
             self.gmt.propagate(self.src)
-            #print "WFE RMS: %fnm"%self.src.wavefront.rms(-9)
+            print "WFE RMS [nm]:"
+	    print self.src.wavefront.rms(-9)
             if self.sensor is not None:
                 self.sensor.reset()
                 self.sensor.propagate(self.src)
-                #self.sensor.readOut(T,0)
-                self.sensor.process()
 @
 \paragraph{Outputs}
 
@@ -531,6 +562,11 @@ The message that triggers the call to the \emph{Outputs} method is
 @ 
 <<SOpticalPath>>=
     def Outputs(self, outputs=None):
+        if self.sensor is not None:
+            self.enable_sensor = True
+            self.sensor.process()
+            #self.sensor.readOut(T,0)
+            self.sensor.reset()
         doutputs = OrderedDict()
         for element in outputs:
             #print self.src.wavefront.rms()
@@ -631,6 +667,11 @@ The message that triggers a call to the \emph{InitializeConditions} method is
                         #print c
                         D.append( self.gmt.calibrate(self.sensor,self.src,**c) )
                         self.gmt.reset()
+                        self.src.reset()
+                        self.sensor.reset()
+                        self.gmt.propagate(self.src)
+                        self.sensor.propagate(self.src)
+                        self.sensor.process()
 
                     Dc = np.concatenate( D, axis=1 )
                     C = CalibrationMatrix(Dc, SVD_truncation[k])
