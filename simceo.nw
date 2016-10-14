@@ -201,7 +201,7 @@ global currentTime
 currentTime = jmsg["currentTime"]
 class_id  = jmsg["class_id"]
 method_id = jmsg["method_id"]
-print "@ %.3fs: %s->%s"%(currentTime,jmsg["tag"],method_id)
+#print "@ %.3fs: %s->%s"%(currentTime,jmsg["tag"],method_id)
 #tid = ceo.StopWatch()
 try:
     #tid.tic()
@@ -249,7 +249,7 @@ if class_id[:2]=="OP" and method_id=="Terminate":
 @
 The value return by the method of the invoked object is sent back to the S--function:
 <<broker run details>>=
-self.socket.send(ubjson.dumpb(args_out))
+self.socket.send(ubjson.dumpb(args_out,no_float32=True))
 @
 
 \subsection{The S classes}
@@ -566,11 +566,12 @@ The message that triggers the call to the \emph{Outputs} method is
             self.enable_sensor = True
             self.sensor.process()
             #self.sensor.readOut(T,0)
-            self.sensor.reset()
         doutputs = OrderedDict()
         for element in outputs:
             #print self.src.wavefront.rms()
             doutputs[element] = self[element]
+        if self.sensor is not None:
+            self.sensor.reset()
         return doutputs
 @ 
 and the dictionnary implementation is
@@ -591,10 +592,18 @@ and the dictionnary implementation is
         elif key=="ee80":
             return self.sensor.ee80().tolist()
         else:
-            c = np.dot(self.comm_matrix[key],
-                       self.sensor.valid_slopes.host(
-                           shape=(self.sensor.n_valid_slopes,1) ) ).reshape(1,-1)
-            c[c==0] = 1e-100
+            #print "M1"
+            #print self.gmt.M1.motion_CS.origin
+            #print self.gmt.M1.motion_CS.euler_angles
+            #print "M2"
+            #print self.gmt.M2.motion_CS.origin
+            #print self.gmt.M2.motion_CS.euler_angles
+            s = self.sensor.valid_slopes.host(
+                           shape=(self.sensor.n_valid_slopes,1) ) 
+            #print "Slopes minmax: [ {} ; {} ]".format(s.min(),s.max())
+            c = np.dot(self.comm_matrix[key], s ).reshape(1,-1)
+            #print "Comms minmax : [ {} ; {} ]".format(c.min(),c.max())
+            #c[c==0] = 1e-100
             return c.tolist()
 @
 \paragraph{InitializeConditions}
@@ -654,6 +663,12 @@ The message that triggers a call to the \emph{InitializeConditions} method is
                         self.comm_matrix[key] = C.M
                         db[key] = C
                     db.close()
+                    self.gmt.reset()
+                    self.src.reset()
+                    self.sensor.reset()
+                    self.gmt.propagate(self.src)
+                    self.sensor.propagate(self.src)
+                    self.sensor.process()
                     return
                 #db = shelve.open(SIMCEOPATH+"/calibration_dbs/"+calibration_file)
             with Timer():
