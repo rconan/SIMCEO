@@ -1084,11 +1084,13 @@ classdef dealer < handle
     end
 
     properties (Dependent)
-       class_id
+        currentTime
+        class_id
     end
 
     properties (Access=private)
-        p_class_id
+        p_currentTime
+        p_class_id		
         tid
     end
 
@@ -1111,7 +1113,8 @@ function self = dealer(class_id,tag)
 
     self.p_class_id = class_id;
     self.tag = strrep(tag,char(10),' ');
-    proto_msg = struct('class_id',self.p_class_id,...
+    proto_msg = struct('currentTime',[],...
+                       'class_id',self.p_class_id,...
                        'method_id','',...
                        'tag',self.tag,...
                        'args',struct('args',[])); 
@@ -1131,7 +1134,7 @@ function self = dealer(class_id,tag)
     self.terminate.method_id = 'Terminate';
 end
 @ 
-The \emph{class\_id} property triggers an update of all the messages:         
+Both, the \emph{currentTime} and the \emph{class\_id} properties trigger an update of all the messages:         
 <<dealer public methods>>=
 function val = get.class_id(self)
     val = self.p_class_id;
@@ -1144,6 +1147,18 @@ function set.class_id(self,val)
     self.outputs.class_id   = val;
     self.terminate.class_id = val;
 end
+function val = get.currentTime(self)
+    val = self.p_currentTime;
+end
+function set.currentTime(self,val)
+    self.p_currentTime = val;
+    self.start.currentTime     = val;
+    self.init.currentTime      = val;
+    self.update.currentTime    = val;
+    self.outputs.currentTime   = val;
+    self.terminate.currentTime = val;
+end
+
 @
 \subsubsection{Public methods}
 \label{sec:public-methods}
@@ -1180,6 +1195,7 @@ end
 The \emph{deal} method sends the message to the CEO server, waits for the server replies and process the reply.
 <<dealer public methods>>=        
 function deal(self,block,tag)
+    self.currentTime = block.currentTime;
     switch tag
       case 'start'
         deal_start(self);
@@ -1253,11 +1269,22 @@ end
         function deal_outputs(self, block)
             if self.n_out>0
                 outputs_msg = ceo.broker.sendrecv(self.outputs);
-                fields = fieldnames(outputs_msg);
+                try
+                    fields = fieldnames(outputs_msg);
+                catch ME
+                    disp('ERROR in output_msg:')
+                    outputs_msg
+                    rethrow(ME)
+                end
                 for k_out=1:self.n_out
                     data = outputs_msg.(fields{k_out});
                     if isempty(data)
                         data = NaN(size(block.OutputPort(k_out).Data));
+                    end
+                    if iscell(data)
+                        data = cellfun(@(x) double(x), data{1});
+                    else
+                        data = double(data);
                     end
                     block.OutputPort(k_out).Data = data;
                 end
@@ -1445,7 +1472,7 @@ the \# of rays per lenslet corresponds to the number of rays across one lenslet,
 * `GeometricShackHartmann`: A shack-Hartmann model where the centroids are derived 
 from the finite difference of the wavefront averaged on the lenslets; 
 the \# of rays per lenslet corresponds to the number of rays across one lenslet.
-# `TT7`:  A shack-Hartmann model where the centroids are derived 
+* `TT7`:  A shack-Hartmann model where the centroids are derived 
 from the finite difference of the wavefront averaged on each segment of the GMT;
 the \# of rays per lenslet corresponds to the number of rays across the telescope diameter.
 
