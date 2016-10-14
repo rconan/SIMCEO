@@ -1,0 +1,42 @@
+\begin{tikzpicture}[every node/.style={rounded corners},
+                    every path/.style={shorten <=1pt,>=stealth,semithick},
+                    element/.style={draw,minimum width=2cm,fill=blue!5},
+                    annotation/.style={inner sep=2pt}]
+
+\node[draw,minimum width=5cm,minimum height=10ex] (ceo) {};
+\node[annotation,anchor=south west] at (ceo.south west) {\textbf{\scriptsize ceo}};
+\node[annotation,anchor=south west] at (ceo.north west) {\textcolor{red}{\textbf{\tiny Matlab package}}};
+
+\node[element,below=of ceo] (SCEO) {SCEO.m};
+\node[annotation,anchor=south west] at (SCEO.north west) {\textcolor{red}{\textbf{\tiny Level 2 S--function}}};
+
+\node[element] (broker) at ($(ceo.north)!0.25!(ceo.south)$) {broker.m};
+\node[element] (dealer) at ($(ceo.north)!0.75!(ceo.south)$) {dealer.m};
+  
+\node[draw,below=of SCEO,minimum width=8cm,minimum height=10ex] (library) {};
+\node[annotation,anchor=south west] at (library.south west) {\textbf{\scriptsize CEO.slx}};
+\node[annotation,anchor=south west] at (library.north west) {\textcolor{red}{\textbf{\tiny Simulink library}}};
+
+\node[element] (OP) at ($(library.west)!0.25!(library.east)$) {Optical Path};
+\node[element] (GMT) at ($(library.west)!0.75!(library.east)$) {GMT};
+  
+\node[draw,below=of library,minimum width=8cm,minimum height=10ex] (model) {};
+%\node[anchor=south west] at (model.south west) {\textbf{\scriptsize CEO.slx}};
+\node[annotation,anchor=south west] at (model.north west) {\textcolor{red}{\textbf{\tiny Simulink model}}};
+
+\node[element] (GS) at ($(model.west)!0.25!(model.east)$) {Guide Star};
+\node[element] (M1) at ($(model.west)!0.75!(model.east)$) {M1};
+
+\path [<-] (OP.east) edge[bend right=25] (SCEO.south)
+           (GMT.west) edge[bend left=25] (SCEO.south);
+\path [->] (OP.north west) edge[bend left=50] (dealer.west)
+           (GMT.north east) edge[bend right=60] (dealer.east);
+\path [<-] (GS.north) edge (OP.south)
+           (M1.north) edge (GMT.south);
+\path [->] (broker) edge (dealer);
+
+\end{tikzpicture}
+%%% Local Variables:
+%%% mode: latex
+%%% TeX-master: "simceo.flowchart.main"
+%%% End:

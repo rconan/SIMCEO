@@ -1,10 +1,12 @@
 open models/agws_fastTT.slx
 
+%% Parameters
 % Sampling frequency
 fs = 200; % Hz
 Ts = 1/fs;
 % M1 update rate
 M1_Ts = 0.1;
+M1_gain = 0.2;
 
 gs_zen = ones(1,3)*8*60;
 gs_azi = (0:2)*120;
@@ -15,7 +17,7 @@ gs_calib = struct('M2TT',struct('mirror','M2','mode','segment tip-tilt','stroke'
     struct('mirror','M2','mode','Rxyz','stroke',1e-6),...
     struct('mirror','M1','mode','Txyz','stroke',1e-6),...
     struct('mirror','M2','mode','Txyz','stroke',1e-6),...
-    struct('mirror','M1','mode','bending modes','stroke',1e-6)]);
+    struct('mirror','M1','mode','bending modes','stroke',1e-6/4)]);
 gs_calib_size = [14,20+20+20+21+42*7];
 
 M1_n_mode = 42;
@@ -102,3 +104,21 @@ ylabel(colorbar(),'arcsec')
 set(gca,'xtick',[],'ytick',[])
 title('Rz')
 
+%% Transfer function
+s = @( nu ) 2*1j*pi*nu;
+z = @(nu,T) exp(s(nu).*T);
+G = @( nu, T, tau, g ) -g.*exp(s(nu).*(tau+0.5.*T)).*sinc(nu.*T)./(s(nu).*T);
+E = @( nu, T, tau, g ) 1./(1+G(nu, T, tau, g));
+L = @(nu,T,g) g./(1-(1-g)./z(nu,T));
+
+nu = logspace(-2,2,1000);
+figure(103)
+clf
+semilogx(nu,20*log10(abs(E(nu,Ts,Ts,0.5))))
+hold all
+semilogx(nu,20*log10(abs(E(nu,M1_Ts,Ts,M1_gain))))
+semilogx(nu,20*log10(abs(L(nu,Ts,0.2))))
+grid
+xlabel('\nu [Hz]')
+ylabel('RTF [dB]')
+legend('M2','M1','LPF','location','best')

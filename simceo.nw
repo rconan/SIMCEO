@@ -36,7 +36,7 @@ Both Matlab--ZMQ and ZeroMQ are shipped pre--compiled with SIMCEO.
 You need however to add, to the Matlab search path, the path to ZeroMQ.
 To do so, move Matlab current folder to SIMCEO folder and at the Matlab prompt enter:
 \\\texttt{>> addpath([pwd,'/matlab-zmq/your-os/lib/'])}\\\texttt{>> savepath}\\
-where \texttt{your-os} is either \texttt{unix}, \texttt{mac} or \texttt{windows}.
+where \texttt{your-os} is either \texttt{unix}, \texttt{mac} \texttt{windows7} or \texttt{windows10}.
 
 \subsection{UBJSON}
 \label{sec:ubjson}
@@ -73,6 +73,11 @@ The messages exchanged between the client and the server are formatted according
 \section{The simulink python module}
 \label{sec:simul-pyth-module}
 
+\begin{figure}
+  \centering
+  \includegraphics[width=\linewidth]{simulink.png}
+  \caption{The classes in the simulink python module and their relations with the CEO classes.}
+\end{figure}
 
 The python interface consists in the module \emph{simulink}:
 <<simceo.py>>=
@@ -713,8 +718,8 @@ The \emph{CalibrationMatrix} class is a container for several matrices:
 \item the truncated inverse $M$ of $D$, $M=V\Lambda U^T$ where
   \begin{eqnarray}
     \label{eq:2}
-      \Lambda_i &=& 1/S_i \forall i<n \nonumber\\
-      \Lambda_i &=& 0 \forall i\geq n \nonumber    
+      \Lambda_i &=& 1/S_i,\quad \forall i<n \nonumber\\
+      \Lambda_i &=& 0,\quad \forall i\geq n \nonumber    
   \end{eqnarray}
 \end{itemize}
 
@@ -772,7 +777,12 @@ class Sensor:
 \section{The ceo Matlab package}
 \label{sec:ceo-matlab-package}
 
-
+\begin{figure}
+  \centering
+  \input{simceo.matlab.tex}
+  \caption{SIMCEO Matlab client flowchart.}
+  \label{fig:1}
+\end{figure}
 \subsection{The broker class}
 \label{sec:matlab-broker-class}
 
@@ -788,6 +798,7 @@ classdef (Sealed=true) broker < handle
         instance_id % The AWS instance ID number
         public_ip % The AWS instance public IP
         zmqReset % ZMQ connection reset flag
+	elapsedTime
     end
     
     properties (Access=private)
@@ -817,6 +828,9 @@ classdef (Sealed=true) broker < handle
         <<request and reply>>
 
         <<reset ZMQ socket>>
+
+        <<time spent>>
+        
     end
 
 end
@@ -828,6 +842,8 @@ function self = broker(varargin)
     self.ctx    = zmq.core.ctx_new();
     self.socket = zmq.core.socket(self.ctx, 'ZMQ_REQ');
     self.zmqReset = true;
+    
+    self.elapsedTime = 0;
 
     currentpath = mfilename('fullpath');
     k = strfind(currentpath,filesep);
@@ -838,7 +854,7 @@ function self = broker(varargin)
     <<broker client: AWS instance launch>>
 end
 @
-If not instance ID is given, a new machine is launched based on a given AWS AMI.
+If no instance ID is given, a new machine is launched based on a given AWS AMI.
 <<broker client: AWS instance launch>>=
 if isempty(self.instance_id)
     run_instance(self)
@@ -876,7 +892,7 @@ end
 instance = loadjson(instance_json);
 self.instance_id = instance.Instances{1}(1).InstanceId;
 @ 
-\item waiting for the confirmation that the instance is running,
+\item waiting for the confirmation that the instance is running (See page \pageref{itm:instanceRunning}),
 \item waiting for the confirmation that the instance has finished to initialize,
 <<waiting for initialization>>=
 fprintf('>>>> WAITING FOR AWS INSTANCE %s TO INITIALIZE ... \n',self.instance_id)
@@ -915,7 +931,7 @@ if status~=0
     error('Setting alarm for AWS machine %s failed!',self.instance_id')
 end
 @ 
-\item getting the public IP of the instance.
+\item getting the public IP of the instance (See page \pageref{itm:publicIP}).
 \end{enumerate}
 @
 \subsubsection{terminate\_instance}
@@ -960,7 +976,7 @@ if status~=0
     error('Starting AWS machine %s failed:\n%s',self.instance_id,cmdout)
 end
 @ 
-\item waiting for the confirmation that the instance is running
+\item waiting for the confirmation that the instance is running\label{itm:instanceRunning}
 <<waiting for the running state>>=
 fprintf('>>>> WAITING FOR AWS INSTANCE %s TO START ... \n',self.instance_id)
 tic
@@ -972,7 +988,7 @@ if status~=0
     error('Starting AWS machine %s failed!',self.instance_id')
 end
 @ 
-\item getting the public IP of the instance.
+\item getting the public IP of the instance\label{itm:publicIP}.
 <<getting the public IP>>=
 cmd = sprintf(['%s ec2 describe-instances --instance-ids %s',...
                ' --output text',...  
@@ -1042,6 +1058,7 @@ end
 \emph{sendrecv} sends a request to the server and returns the server reply:
 <<request and reply>>= 
 function jmsg = sendrecv(send_msg)
+    tid = tic;
     self = ceo.broker.getBroker();
     jsend_msg = saveubjson('',send_msg);
     zmq.core.send( self.socket, uint8(jsend_msg) );
@@ -1062,6 +1079,7 @@ function jmsg = sendrecv(send_msg)
         disp('Server issue!')
         set_param(gcs,'SimulationCommand','stop')
     end    
+    self.elapsedTime = self.elapsedTime + toc(tid);
 end
 @ 
 \emph{resetZMQ} resets the ZeroMQ socket
@@ -1088,11 +1106,20 @@ function setZmqResetFlag(val)
     self.zmqReset = val;
 end
 @ 
+Time spent communicating:
+<<time spent>>=
+function timeSpent()
+    self = ceo.broker.getBroker();
+    fprintf('@(broker)> Time spent communicating with the server: %.3fs\n',...
+    			self.elapsedTime)
+    self.elapsedTime = 0;
+end
+@ 
 
 \subsection{The dealer class}
 \label{sec:the-dealer-class}
 
-The \emph{messages} class contains the messages that are sent by the different functions of the S--function.
+The \emph{dealer} class contains the messages that are sent by the different functions of the S--function.
 Each CEO block instantiates a \emph{dealer} class and tailors the messages in the initialization of the block mask.
 It also holds the number of inputs and outputs of the block as well as the dimensions of the inputs and outputs.  
 <<dealer.m>>=
@@ -1118,6 +1145,7 @@ classdef dealer < handle
 
     properties (Access=private)
         p_class_id
+        tid
     end
 
     methods
@@ -1138,7 +1166,7 @@ There are five messages that corresponds to 4 four S--function routines:
 function self = dealer(class_id,tag)
 
     self.p_class_id = class_id;
-    self.tag = tag;
+    self.tag = strrep(tag,char(10),' ');
     proto_msg = struct('class_id',self.p_class_id,...
                        'method_id','',...
                        'tag',self.tag,...
@@ -1200,7 +1228,8 @@ The names of the output ports are set with:
 <<dealer public methods>>=
 function output_names(self,port_handle)
     for k_out=1:self.n_out
-        set(port_handle.Outport(k_out), 'SignalNameFromLabel', self.outputs.args.outputs{k_out})
+        set(port_handle.Outport(k_out), ...
+	    'SignalNameFromLabel', self.outputs.args.outputs{k_out})
     end
 end
 @
@@ -1232,7 +1261,7 @@ function dump(self)
                'outputs',   self.outputs,...
                'terminate', self.terminate);
     delete([gcs,'#*.json'])
-    savejson('',s,strrep(strrep(strrep([gcb,'.json'],'/','#'),' ','_'),'\n','-'));
+    savejson('',s,strrep(strrep(strrep([gcb,'.json'],'/','#'),' ','_'),char(10),'_'));
 end
 @ 
 \subsubsection{Private methods}
@@ -1244,18 +1273,22 @@ function deal_start(self)
     jmsg = ceo.broker.sendrecv(self.start);
     self.class_id = char(jmsg);
     fprintf('@(%s)> Object created!\n',self.tag)
+    self.tid = tic;
 end
 
 function deal_init(self)
     ceo.broker.sendrecv(self.init);
     fprintf('@(%s)> Object calibrated!\n',self.tag)
+    self.tid = tic;
 end
 
 function deal_terminate(self)
+    toc(self.tid)
     jmsg = ceo.broker.sendrecv(self.terminate);
     dump(self)
     fprintf('@(%s)> %s\n',self.tag,jmsg)
     ceo.broker.setZmqResetFlag(true)
+    ceo.broker.timeSpent()
 end
 @ 
 \emph{deal\_inputs} reads the block inputs and affects the input data to the corresponding field in the update message:
@@ -1374,7 +1407,6 @@ msg_box   = get(gcbh,'UserData');
 fprintf('__ %s: START  __\n',msg_box.tag)
 deal(msg_box,block,'start')
 %set(gcbh,'UserData',msg_box)
-tic
 %end Start
 @
 \subsubsection{Outputs}
@@ -1400,7 +1432,6 @@ function Update(block)
 
 function Terminate(block)
 
-toc
 msg_box = get(gcbh,'UserData');
 deal(msg_box,block,'terminate')
 %set(gcbh,'UserData',[])
@@ -1470,6 +1501,22 @@ the \# of rays per lenslet corresponds to the number of rays across one lenslet,
 * `GeometricShackHartmann`: A shack-Hartmann model where the centroids are derived 
 from the finite difference of the wavefront averaged on the lenslets; 
 the \# of rays per lenslet corresponds to the number of rays across one lenslet.
+# `TT7`:  A shack-Hartmann model where the centroids are derived 
+from the finite difference of the wavefront averaged on each segment of the GMT;
+the \# of rays per lenslet corresponds to the number of rays across the telescope diameter.
+
+#### Source FWHM
+
+The full width at half maximum of the source intensity profile assuming a Gaussian intensity distribution.
+The FWHM is given in units of pixel before binning.
+
+#### Propagate through the atmosphere
+
+If checked, the guide star is propagated through the atmosphere using the model defined in the atmosphere block.
+
+#### Sample Time
+
+The sampling time of the block outputs that also corresponds to the exposure time of the detector of the wavefront sensor.
 
 ## Sensor Tab
 
@@ -1485,6 +1532,10 @@ The physical length of one lenslet project on M1 in meter.
 
 The detector resolution of the optical sensor in pixel.
 
+#### Intensity threshold
+
+The threshold on the lenslet integrated flux. Any lenslet, whose fraction of integrated intensity with respect to a fully illuminated lenslet is less than the threshold, is discarded.
+
 #### Pixel scale
 
 The angular size of a pixel of the detector in arcsec.
@@ -1493,21 +1544,27 @@ $(\lambda/d)(b/a)$
 where both $a$ and $b$
 are integers
 
+#### Field-of-view
+
+The field-of-view of the wavefront sensor in arcsec.
+
 ## Outputs Tab
 
 ### Star
 
+Each output is derived on the telescope full pupil and/or on each segment.
+
 #### Wavefront error rms
 
-The RMS, over the telescope pupil, of the guide star wavefront in meter.
+The RMS of the guide star wavefront in micron.
 
 #### Piston
 
-The piston component of the guide star wavefront in meter.
+The piston component of the guide star wavefront in micron.
 
-#### Segment Piston
+#### Tip-tilt
 
-The piston component of the guide star wavefront, per segment, in meter.
+The tip-tilt component of the guide star wavefront in arcsec.
  
 ### Sensor
 

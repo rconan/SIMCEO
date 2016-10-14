@@ -1,0 +1,20 @@
+digraph {
+#overlap=false
+splines=true
+#bgcolor = black
+node[style=filled,fillcolor=lightgray,color=white];
+
+subgraph cluster0 {
+edge[dir=back];
+Sfunction -> {SGMT ; SAtmosphere ; SOpticalPath};
+edge[arrowtail=odot,dir=back];
+{SGMT ; SAtmosphere ; SOpticalPath} -> broker;
+SOpticalPath -> SAtmosphere;
+color = red;
+label = "simulink";
+}
+edge[arrowtail=odot,dir=back];
+GMT_MX -> {SGMT ; SOpticalPath};
+JGmtAtmosphere -> SAtmosphere;
+{Source ; Imaging ; ShackHartmann ; GeometricShackHArtmann ; TT7 } -> SOpticalPath;
+}
