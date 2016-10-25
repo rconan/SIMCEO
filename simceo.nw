@@ -363,22 +363,6 @@ The message that triggers the call to the \emph{Update} method is
             elif key=="mode_coefs":
                 self.gmt[mirror].modes.a = np.copy( data, order='C')
                 self.gmt[mirror].modes.update()
-        for op in self.ops:
-            op.src.reset()
-            self.gmt.propagate(op.src)
-            if op.propagateThroughAtm:
-                #sys.stdout.write("\r@(SAtmosphere)> Simulation time: %.3gs"%op.stime)
-                #sys.stdout.flush()
-                #tid = ceo.StopWatch()
-                delta = op.src.rays.L/(op.src.rays.N_L-1)
-                nPx   = op.src.rays.N_L
-                #tid.tic()
-                self.satm.atm.ray_tracing(op.src,delta,nPx,delta,nPx,currentTime)
-                #op.stime += self.satm.samplingTime
-                #tid.ping()
-            if op.sensor is not None and op.enable_sensor:
-                #print "Integrating!"
-                op.sensor.propagate(op.src)
 @
 \paragraph{InitializeConditions}
 
@@ -477,7 +461,6 @@ The message that triggers the call to the \emph{Start} method is
     def Start(self,source_args=None, sensor_class=None, sensor_args=None, 
               calibration_source_args=None, miscellaneous_args=None):
         print miscellaneous_args
-        self.exposureTime = miscellaneous_args['exposure_time']
         self.propagateThroughAtm = miscellaneous_args['propagate_through_atmosphere']
         print 'propagateThroughAtm'
         print self.propagateThroughAtm
@@ -490,12 +473,21 @@ The message that triggers the call to the \emph{Start} method is
             else:
                 self.calib_src = ceo.Source( **calibration_source_args )
 	
+            self.sampleTime     = miscellaneous_args['sampleTime']
+            self.exposure_time  = int(np.round(miscellaneous_args['exposure_time']/self.sampleTime))
+            if self.exposure_time<=0:
+                self.exposure_time = 1
+            self.exposure_start = int(np.round(miscellaneous_args['exposure_start']/self.sampleTime))
+            print 'exposure_time: %dframe'%self.exposure_time
+            print 'exposure_start: %dframe'%self.exposure_start
+
 	    self.src.reset()
 	    self.gmt.reset()
             self.gmt.propagate(self.src)
 	    self.sensor.calibrate(self.calib_src,miscellaneous_args['intensity_threshold'])
-            if isinstance(self.sensor,(ceo.ShackHartmann,ceo.GeometricShackHartmann)):
+            if isinstance(self.sensor,(ceo.ShackHartmann,ceo.GeometricShackHartmann,ceo.GMTLIB.TT7)):
                 print "# of valid slopes: %d"%self.sensor.n_valid_slopes
+                self.slopes = np.zeros( shape=(self.sensor.n_valid_slopes,1) )
 
             self.poke_matrix = {}
             self.comm_matrix = {}
@@ -537,7 +529,22 @@ The message that triggers the call to the \emph{Update} method is
 <<SOpticalPath>>=
     def Update(self, inputs=None):
         #print "Updating OP!"
-        pass
+        self.src.reset()
+        self.gmt.propagate(self.src)
+        if self.propagateThroughAtm:
+            #sys.stdout.write("\r@(SAtmosphere)> Simulation time: %.3gs"%self.stime)
+            #sys.stdout.flush()
+            #tid = ceo.StopWatch()
+            delta = self.src.rays.L/(self.src.rays.N_L-1)
+            nPx   = self.src.rays.N_L
+            #tid.tic()
+            self.satm.atm.ray_tracing(self.src,delta,nPx,delta,nPx,currentTime)
+            #self.stime += self.satm.samplingTime
+            #tid.ping()
+        if self.sensor is not None and (currentTime/self.sampleTime)>self.exposure_start:
+            #print "Integrating!"
+            self.sensor.propagate(self.src)
+
 @ 
 <<opt-out>>=
         if self.propagateThroughAtm:
@@ -567,16 +574,27 @@ The message that triggers the call to the \emph{Outputs} method is
 @ 
 <<SOpticalPath>>=
     def Outputs(self, outputs=None):
-        if self.sensor is not None:
-            self.enable_sensor = True
+        next_exposure_start = int(np.round(currentTime/self.sampleTime))
+        exposure_end        = self.exposure_time + self.exposure_start
+        if self.sensor is not None and next_exposure_start==exposure_end:
+            #print "Processing!"
             self.sensor.process()
-            #self.sensor.readOut(T,0)
+            try:
+                self.slopes = self.sensor.valid_slopes.host(
+                    shape=(self.sensor.n_valid_slopes,1) )
+            except Exception as E:
+                print "Processing error!!"
+
         doutputs = OrderedDict()
         for element in outputs:
             #print self.src.wavefront.rms()
             doutputs[element] = self[element]
-        if self.sensor is not None:
+
+        if self.sensor is not None and next_exposure_start==exposure_end:
             self.sensor.reset()
+            #self.sensor.readOut(self.exposureTime,0)
+            self.exposure_start = next_exposure_start
+
         return doutputs
 @ 
 and the dictionnary implementation is
@@ -603,10 +621,8 @@ and the dictionnary implementation is
             #print "M2"
             #print self.gmt.M2.motion_CS.origin
             #print self.gmt.M2.motion_CS.euler_angles
-            s = self.sensor.valid_slopes.host(
-                           shape=(self.sensor.n_valid_slopes,1) ) 
             #print "Slopes minmax: [ {} ; {} ]".format(s.min(),s.max())
-            c = np.dot(self.comm_matrix[key], s ).reshape(1,-1)
+            c = np.dot(self.comm_matrix[key], self.slopes ).reshape(1,-1)
             #print "Comms minmax : [ {} ; {} ]".format(c.min(),c.max())
             #c[c==0] = 1e-100
             return c.tolist()
@@ -684,14 +700,17 @@ The message that triggers a call to the \emph{InitializeConditions} method is
                     D = []
                     #print calibs
                     for c in calibs: # Through calib
-                        #print c
-                        D.append( self.gmt.calibrate(self.sensor,self.src,**c) )
+                        print c
                         self.gmt.reset()
                         self.src.reset()
                         self.sensor.reset()
-                        self.gmt.propagate(self.src)
-                        self.sensor.propagate(self.src)
-                        self.sensor.process()
+                        D.append( self.gmt.calibrate(self.sensor,self.src,**c) )
+                    self.gmt.reset()
+                    self.src.reset()
+                    self.sensor.reset()
+                    self.gmt.propagate(self.src)
+                    self.sensor.propagate(self.src)
+                    self.sensor.process()
 
                     Dc = np.concatenate( D, axis=1 )
                     C = CalibrationMatrix(Dc, SVD_truncation[k])
