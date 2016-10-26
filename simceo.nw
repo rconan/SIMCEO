@@ -203,7 +203,7 @@ The message received from the S--function contains
 The class method is invoked with:
 <<broker run details>>=
 global currentTime
-currentTime = jmsg["currentTime"]
+currentTime = float( jmsg["currentTime"][0][0] )
 class_id  = jmsg["class_id"]
 method_id = jmsg["method_id"]
 #print "@ %.3fs: %s->%s"%(currentTime,jmsg["tag"],method_id)
