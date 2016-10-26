@@ -1270,7 +1270,7 @@ end
 The \emph{deal} method sends the message to the CEO server, waits for the server replies and process the reply.
 <<dealer public methods>>=        
 function deal(self,block,tag)
-    self.currentTime = block.currentTime;
+    self.currentTime = {block.currentTime};
     switch tag
       case 'start'
         deal_start(self);
