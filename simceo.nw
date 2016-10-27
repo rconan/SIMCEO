@@ -249,7 +249,6 @@ If the ID tag of the optical path is just \textbf{OP}, a new \emph{SOpticalPath}
 When the \emph{Terminate} method of an \emph{SOpticalPath} object is called, the object is removed from the optical path list \emph{ops}. 
 <<broker run details>>=
 if class_id[:2]=="OP" and method_id=="Terminate":
-#    del(self.ops[int(class_id[2:])])
     self.ops.pop(0)
 @
 The value return by the method of the invoked object is sent back to the S--function:
@@ -296,8 +295,6 @@ class SGMT(Sfunction):
 
     def __init__(self, ops, satm):
         self.gmt  = ceo.GMT_MX()
-        self.satm = satm
-        self.ops  = ops
 
     def Terminate(self, args=None):
         self.gmt = ceo.GMT_MX()
@@ -325,9 +322,7 @@ The message that triggers the call to the \emph{Start} method is
 @
 <<SGMT>>=
     def Start(self,mirror=None,mirror_args=None):
-        #print mirror_args
         self.gmt[mirror] = getattr(ceo,"GMT_"+mirror)( **mirror_args )
-        #print self.gmt[mirror].modes
         return "GMT"
 @
 
@@ -351,12 +346,10 @@ The message that triggers the call to the \emph{Update} method is
 @
 <<SGMT>>=
     def Update(self, mirror=None, inputs_args=None):
-        #print "Updating GMT!"
         for key in inputs_args:
             data = np.array( inputs_args[key], order='C', dtype=np.float64 )
             data = np.transpose( np.reshape( data , (-1,7) ) )
             if key=="TxyzRxyz":
-                #print np.array_str(data[:,:3], suppress_small=True)
                 self.gmt[mirror].motion_CS.origin[:]       = data[:,:3]
                 self.gmt[mirror].motion_CS.euler_angles[:] = data[:,3:]
                 self.gmt[mirror].motion_CS.update()
@@ -407,23 +400,6 @@ class SAtmosphere(Sfunction):
     def Update(self, args=None):
         pass
 @ 
-<<opt-out>>=
-        for op in self.ops:
-            if op.propagateThroughAtm:
-                #sys.stdout.write("\r@(SAtmosphere)> Simulation time: %.3gs"%op.stime)
-                #sys.stdout.flush()
-                #tid = ceo.StopWatch()
-                delta = op.src.rays.L/(op.src.rays.N_L-1)
-                nPx   = op.src.rays.N_L
-                #tid.tic()
-                op.src.reset()
-                op.gmt.propagate(op.src)
-                self.atm.ray_tracing(op.src,delta,nPx,delta,nPx,op.stime)
-                op.stime += self.samplingTime
-                if op.sensor is not None:
-                    op.sensor.propagate(op.src)
-                #tid.ping()
-@ 
 
 \subsubsection{The SOpticalPath class}
 \label{sec:sopticalpath-class}
@@ -460,10 +436,7 @@ The message that triggers the call to the \emph{Start} method is
 <<SOpticalPath>>=
     def Start(self,source_args=None, sensor_class=None, sensor_args=None, 
               calibration_source_args=None, miscellaneous_args=None):
-        print miscellaneous_args
         self.propagateThroughAtm = miscellaneous_args['propagate_through_atmosphere']
-        print 'propagateThroughAtm'
-        print self.propagateThroughAtm
         self.src = ceo.Source( **source_args )
         if sensor_class is not None:
 
@@ -478,8 +451,6 @@ The message that triggers the call to the \emph{Start} method is
             if self.exposure_time<=0:
                 self.exposure_time = 1
             self.exposure_start = int(np.round(miscellaneous_args['exposure_start']/self.sampleTime))
-            print 'exposure_time: %dframe'%self.exposure_time
-            print 'exposure_start: %dframe'%self.exposure_start
 
 	    self.src.reset()
 	    self.gmt.reset()
@@ -489,10 +460,7 @@ The message that triggers the call to the \emph{Start} method is
                 print "# of valid slopes: %d"%self.sensor.n_valid_slopes
                 self.slopes = np.zeros( shape=(self.sensor.n_valid_slopes,1) )
 
-            self.poke_matrix = {}
             self.comm_matrix = {}
-            self.stime = 0.0
-            self.enable_sensor = False
 
         return "OP"+str(self.idx)
 @
@@ -528,7 +496,6 @@ The message that triggers the call to the \emph{Update} method is
 @ 
 <<SOpticalPath>>=
     def Update(self, inputs=None):
-        #print "Updating OP!"
         self.src.reset()
         self.gmt.propagate(self.src)
         if self.propagateThroughAtm:
@@ -539,26 +506,11 @@ The message that triggers the call to the \emph{Update} method is
             nPx   = self.src.rays.N_L
             #tid.tic()
             self.satm.atm.ray_tracing(self.src,delta,nPx,delta,nPx,currentTime)
-            #self.stime += self.satm.samplingTime
             #tid.ping()
         if self.sensor is not None and (currentTime/self.sampleTime)>self.exposure_start:
-            #print "Integrating!"
             self.sensor.propagate(self.src)
-
 @ 
-<<opt-out>>=
-        if self.propagateThroughAtm:
-            #print "\n@(SOpticalPath)> Simulation time: %gs\n"%self.stime
-            pass
-        else:
-            self.src.reset()
-            self.gmt.propagate(self.src)
-            print "WFE RMS [nm]:"
-	    print self.src.wavefront.rms(-9)
-            if self.sensor is not None:
-                self.sensor.reset()
-                self.sensor.propagate(self.src)
-@
+
 \paragraph{Outputs}
 
 The message that triggers the call to the \emph{Outputs} method is
@@ -577,17 +529,13 @@ The message that triggers the call to the \emph{Outputs} method is
         next_exposure_start = int(np.round(currentTime/self.sampleTime))
         exposure_end        = self.exposure_time + self.exposure_start
         if self.sensor is not None and next_exposure_start==exposure_end:
-            #print "Processing!"
             self.sensor.process()
-            try:
+            if isinstance(self.sensor,(ceo.ShackHartmann,ceo.GeometricShackHartmann,ceo.GMTLIB.TT7)):
                 self.slopes = self.sensor.valid_slopes.host(
                     shape=(self.sensor.n_valid_slopes,1) )
-            except Exception as E:
-                print "Processing error!!"
 
         doutputs = OrderedDict()
         for element in outputs:
-            #print self.src.wavefront.rms()
             doutputs[element] = self[element]
 
         if self.sensor is not None and next_exposure_start==exposure_end:
@@ -615,16 +563,7 @@ and the dictionnary implementation is
         elif key=="ee80":
             return self.sensor.ee80().tolist()
         else:
-            #print "M1"
-            #print self.gmt.M1.motion_CS.origin
-            #print self.gmt.M1.motion_CS.euler_angles
-            #print "M2"
-            #print self.gmt.M2.motion_CS.origin
-            #print self.gmt.M2.motion_CS.euler_angles
-            #print "Slopes minmax: [ {} ; {} ]".format(s.min(),s.max())
             c = np.dot(self.comm_matrix[key], self.slopes ).reshape(1,-1)
-            #print "Comms minmax : [ {} ; {} ]".format(c.min(),c.max())
-            #c[c==0] = 1e-100
             return c.tolist()
 @
 \paragraph{InitializeConditions}
@@ -668,7 +607,6 @@ The message that triggers a call to the \emph{InitializeConditions} method is
         print "@(SOpticalPath:InitializeConditions)>"
         if calibrations is not None:
             #import scipy.io.matlab as matlab
-            #print kwargs
             k = 0
             if not isinstance(SVD_truncation,list):
                 SVD_truncation = [SVD_truncation]
@@ -691,16 +629,13 @@ The message that triggers a call to the \emph{InitializeConditions} method is
                     self.sensor.propagate(self.src)
                     self.sensor.process()
                     return
-                #db = shelve.open(SIMCEOPATH+"/calibration_dbs/"+calibration_file)
             with Timer():
                 for key in calibrations: # Through calibrations
                     calibs = calibrations[key]
                     if not isinstance(calibs,list):
                         calibs = [calibs]
                     D = []
-                    #print calibs
                     for c in calibs: # Through calib
-                        print c
                         self.gmt.reset()
                         self.src.reset()
                         self.sensor.reset()
@@ -715,9 +650,8 @@ The message that triggers a call to the \emph{InitializeConditions} method is
                     Dc = np.concatenate( D, axis=1 )
                     C = CalibrationMatrix(Dc, SVD_truncation[k])
                     k+=1
-                    self.poke_matrix[key] = C
                     #matlab.savemat('poke_matrix.mat',{'D':Dc})
-                    self.comm_matrix[key] = self.poke_matrix[key].M
+                    self.comm_matrix[key] = C.M
 
                     if calibration_file is not None:
                         print " . Saving command matrix to database %s!"%calibration_file
