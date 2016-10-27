@@ -853,7 +853,7 @@ classdef (Sealed=true) broker < handle
     end
 
 end
-@ %def awspath instance_id public_ip zmqReset 
+@ 
 The Matlab broker class starts an AWS machine and sets--up ZeroMQ context and socket.
 <<broker client>>=
 function self = broker(varargin)
@@ -1181,7 +1181,7 @@ classdef dealer < handle
 
     end
  end
-@ %def n_in dims_in n_out dims_out start update outputs terminate init
+@ 
 There are five messages that corresponds to 4 four S--function routines:
 <<dealer public methods>>=
 function self = dealer(class_id,tag)
@@ -1295,10 +1295,12 @@ function dump(self)
                'update',    self.update,...
                'outputs',   self.outputs,...
                'terminate', self.terminate);
-    delete([gcs,'#*.json'])
-    savejson('',s,strrep(strrep(strrep([gcb,'.json'],'/','#'),' ','_'),char(10),'_'));
+    mkdir('JSON',gcs);
+    dirpath = fullfile('JSON',gcs);
+    filename = [strrep(get_param(gcb,'Name'),char(10),' '),'.json'];
+    savejson('',s,fullfile(dirpath,filename));
 end
-@ 
+@ %def dump
 \subsubsection{Private methods}
 \label{sec:private-methods}
 
