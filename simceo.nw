@@ -196,6 +196,7 @@ except Exception as E:
 @
 The message received from the S--function contains
 \begin{itemize}
+\item the Simulink simulation time \emph{currentTime},
 \item a class identifier, \emph{class\_id}: \textbf{GMT} for \emph{SGMT}, \textbf{ATM} for \emph{SAtmosphere} or \textbf{OP} for \emph{SOpticalPath},
 \item a method identifier, \emph{method\_id}: \textbf{Start}, \textbf{Terminate}, \textbf{Update} or \textbf{Outputs},
 \item a dictionnary of the arguments to the method,  \emph{args}.
@@ -378,13 +379,10 @@ The \emph{SAtmosphere} class is the interface class between a CEO \emph{GmtAtmos
 class SAtmosphere(Sfunction):
 
     def __init__(self, ops):
-        self.ops = ops
         self.atm = None
-        self.samplingTime = None
 
-    def Start(self,samplingTime=1.0, **kwargs):
+    def Start(self, **kwargs):
         self.atm = ceo.JGmtAtmosphere( **kwargs )
-        self.samplingTime = samplingTime
         return "ATM"
 
     def Terminate(self, args=None):
@@ -414,8 +412,7 @@ class SOpticalPath(Sfunction):
         self.gmt = gmt
         self.satm = satm
 	self.sensor = None
-        self.D = {}
-@
+@ %def idx sensor
 \paragraph{Start}
 
 The message that triggers the call to the \emph{Start} method is
@@ -436,8 +433,10 @@ The message that triggers the call to the \emph{Start} method is
 <<SOpticalPath>>=
     def Start(self,source_args=None, sensor_class=None, sensor_args=None, 
               calibration_source_args=None, miscellaneous_args=None):
+        
         self.propagateThroughAtm = miscellaneous_args['propagate_through_atmosphere']
         self.src = ceo.Source( **source_args )
+        
         if sensor_class is not None:
 
             self.sensor = getattr(ceo,sensor_class)( **sensor_args )
@@ -447,23 +446,29 @@ The message that triggers the call to the \emph{Start} method is
                 self.calib_src = ceo.Source( **calibration_source_args )
 	
             self.sampleTime     = miscellaneous_args['sampleTime']
-            self.exposure_time  = int(np.round(miscellaneous_args['exposure_time']/self.sampleTime))
+            self.exposure_time  =
+              int(np.round(miscellaneous_args['exposure_time']/self.sampleTime))
             if self.exposure_time<=0:
                 self.exposure_time = 1
-            self.exposure_start = int(np.round(miscellaneous_args['exposure_start']/self.sampleTime))
+            self.exposure_start =
+              int(np.round(miscellaneous_args['exposure_start']/self.sampleTime))
 
 	    self.src.reset()
 	    self.gmt.reset()
             self.gmt.propagate(self.src)
-	    self.sensor.calibrate(self.calib_src,miscellaneous_args['intensity_threshold'])
-            if isinstance(self.sensor,(ceo.ShackHartmann,ceo.GeometricShackHartmann,ceo.GMTLIB.TT7)):
+	    self.sensor.calibrate(self.calib_src,
+                                  miscellaneous_args['intensity_threshold'])
+            if isinstance(self.sensor,
+                          (ceo.ShackHartmann,
+                           ceo.GeometricShackHartmann,
+                           ceo.GMTLIB.TT7)):
                 print "# of valid slopes: %d"%self.sensor.n_valid_slopes
                 self.slopes = np.zeros( shape=(self.sensor.n_valid_slopes,1) )
 
             self.comm_matrix = {}
 
         return "OP"+str(self.idx)
-@
+@ %def src propagateThroughAtm exposure_start exposure_time
 \paragraph{Terminate}
 
 The message that triggers the call to the \emph{Terminate} method is
@@ -530,7 +535,9 @@ The message that triggers the call to the \emph{Outputs} method is
         exposure_end        = self.exposure_time + self.exposure_start
         if self.sensor is not None and next_exposure_start==exposure_end:
             self.sensor.process()
-            if isinstance(self.sensor,(ceo.ShackHartmann,ceo.GeometricShackHartmann,ceo.GMTLIB.TT7)):
+            if isinstance(self.sensor,(ceo.ShackHartmann,
+                                       ceo.GeometricShackHartmann,
+                                       ceo.GMTLIB.TT7)):
                 self.slopes = self.sensor.valid_slopes.host(
                     shape=(self.sensor.n_valid_slopes,1) )
 
@@ -551,15 +558,20 @@ and the dictionnary implementation is
         if key=="wfe_rms":
             return self.src.wavefront.rms(units_exponent=-6).tolist()
         elif key=="segment_wfe_rms":
-            return self.src.phaseRms(where="segments",units_exponent=-6).tolist()
+            return self.src.phaseRms(where="segments",
+                                     units_exponent=-6).tolist()
         elif key=="piston":
-            return self.src.piston(where="pupil",units_exponent=-6).tolist()
+            return self.src.piston(where="pupil",
+                                   units_exponent=-6).tolist()
         elif key=="segment_piston":
-            return self.src.piston(where="segments",units_exponent=-6).tolist()
+            return self.src.piston(where="segments",
+                                   units_exponent=-6).tolist()
         elif key=="tiptilt":
-            return self.src.wavefront.gradientAverage(1,self.src.rays.L).host(units='arcsec').tolist()
+            return self.src.wavefront.gradientAverage(1,self.src.rays.L).\
+                host(units='arcsec').tolist()
         elif key=="segment_tiptilt":
-            return self.gmt.segmentsWavefrontGradient(self.src).host(units='arcsec').tolist()
+            return self.gmt.segmentsWavefrontGradient(self.src).\
+                host(units='arcsec').tolist()
         elif key=="ee80":
             return self.sensor.ee80().tolist()
         else:
@@ -610,11 +622,14 @@ The message that triggers a call to the \emph{InitializeConditions} method is
             k = 0
             if not isinstance(SVD_truncation,list):
                 SVD_truncation = [SVD_truncation]
+                
             if calibration_file is not None:
                 filepath = os.path.join(SIMCEOPATH,"calibration_dbs",calibration_file)
                 db = shelve.open(filepath)
+                
                 if os.path.isfile(filepath+".dir"):
-                    print " . Loading command matrix from existing database %s!"%calibration_file
+                    print " . Loading command matrix from existing database %s!"%\
+                        calibration_file
                     for key in db:
                         C = db[key]
                         C.nThreshold = SVD_truncation[k]
@@ -629,6 +644,7 @@ The message that triggers a call to the \emph{InitializeConditions} method is
                     self.sensor.propagate(self.src)
                     self.sensor.process()
                     return
+                
             with Timer():
                 for key in calibrations: # Through calibrations
                     calibs = calibrations[key]
@@ -653,11 +669,10 @@ The message that triggers a call to the \emph{InitializeConditions} method is
                     #matlab.savemat('poke_matrix.mat',{'D':Dc})
                     self.comm_matrix[key] = C.M
 
-                    if calibration_file is not None:
-                        print " . Saving command matrix to database %s!"%calibration_file
-                        db[str(key)] = C
-
             if calibration_file is not None:
+                print " . Saving command matrix to database %s!"%\
+                    calibration_file
+                db[str(key)] = C
                 db.close()
 @ 
 
@@ -806,7 +821,7 @@ function self = broker(varargin)
     self.instance_id     = cfg.aws_instance_id;
     <<broker client: AWS instance launch>>
 end
-@
+@ %def instance_id awspath etc self.elapsedTime zmqReset 
 If no instance ID is given, a new machine is launched based on a given AWS AMI.
 <<broker client: AWS instance launch>>=
 if isempty(self.instance_id)
@@ -816,7 +831,7 @@ else
     start_instance(self)
     self.instance_end_state = 'stop';
 end
-@
+@ %def instance_end_state 
 \subsubsection{run\_instance}
 \label{sec:run_instance}
 
@@ -830,7 +845,7 @@ function run_instance(self)
     <<setting up cloudwatch>>
     <<getting the public IP>>    
 end
-@ 
+@ %def run_instance
 The sequence of operations is:
 \begin{enumerate}
 \item launching the instance,
@@ -903,7 +918,7 @@ function terminate_instance(self)
         end
     end
 end
-@
+@ %def terminate_instance
 \subsubsection{start\_instance}
 \label{sec:start_instance}
 
@@ -914,7 +929,7 @@ function start_instance(self)
     <<waiting for the running state>>
     <<getting the public IP>>
 end
-@
+@ %def start_instance
 The sequence of operations is:
 \begin{enumerate}
 \item starting the instance:
@@ -954,7 +969,7 @@ if status~=0
 end
 self.public_ip = strtrim(public_ip_);
 fprintf('\n ==>> machine is up and running @%s\n',self.public_ip)
-@
+@ %def public_ip
 \end{enumerate}
 @
 Once the instance is running, ZeroMQ connects the client to the server port of ZeroMQ on the AWS instance:
@@ -1007,7 +1022,7 @@ function self = getBroker(varargin)
     end
     self = this;
 end
-@
+@ %def getBroker
 \emph{sendrecv} sends a request to the server and returns the server reply:
 <<request and reply>>= 
 function jmsg = sendrecv(send_msg)
@@ -1034,7 +1049,7 @@ function jmsg = sendrecv(send_msg)
     end    
     self.elapsedTime = self.elapsedTime + toc(tid);
 end
-@ 
+@ %def sendrecv
 \emph{resetZMQ} resets the ZeroMQ socket
 <<reset ZMQ socket>>=
 function resetZMQ()
@@ -1191,7 +1206,7 @@ function IO_setup(self,block)
     end
     block.SampleTimes = self.sampleTime;
 end
-@ 
+@ %def IO_setup
 The names of the output ports are set with:
 <<dealer public methods>>=
 function output_names(self,port_handle)
@@ -1200,7 +1215,7 @@ function output_names(self,port_handle)
 	    'SignalNameFromLabel', self.outputs.args.outputs{k_out})
     end
 end
-@
+@ %def output_names
 The \emph{deal} method sends the message to the CEO server, waits for the server replies and process the reply.
 <<dealer public methods>>=        
 function deal(self,block,tag)
@@ -1220,7 +1235,7 @@ function deal(self,block,tag)
                  ' valid tags are: start, init, IO and terminate!'])
     end
 end
-@
+@ %def deal
 The messages are concatenated into a single json file with:
 <<dealer public methods>>=
 function dump(self)
@@ -1261,47 +1276,47 @@ function deal_terminate(self)
     ceo.broker.setZmqResetFlag(true)
     ceo.broker.timeSpent()
 end
-@ 
+@ %def deal_start deal_init deal_terminate
 \emph{deal\_inputs} reads the block inputs and affects the input data to the corresponding field in the update message:
 <<dealer private methods>>=                
-        function deal_inputs(self, block)
-            if self.n_in>0
-                fields = fieldnames(self.update.args.inputs_args);
-                for k_in=1:self.n_in
-                    self.update.args.inputs_args.(fields{k_in}) = ...
-                                          reshape(block.InputPort(k_in).Data,1,[]);
-                end
-            end
-            ceo.broker.sendrecv(self.update);
+function deal_inputs(self, block)
+    if self.n_in>0
+        fields = fieldnames(self.update.args.inputs_args);
+        for k_in=1:self.n_in
+            self.update.args.inputs_args.(fields{k_in}) = ...
+                                  reshape(block.InputPort(k_in).Data,1,[]);
         end
-@ 
+    end
+    ceo.broker.sendrecv(self.update);
+end
+@ %def deal_inputs
 \emph{deal\_outputs} affects the inputs from the CEO server to the corresponding data field of the block outputs:
 <<dealer private methods>>=                
-        function deal_outputs(self, block)
-            if self.n_out>0
-                outputs_msg = ceo.broker.sendrecv(self.outputs);
-                try
-                    fields = fieldnames(outputs_msg);
-                catch ME
-                    disp('ERROR in output_msg:')
-                    outputs_msg
-                    rethrow(ME)
-                end
-                for k_out=1:self.n_out
-                    data = outputs_msg.(fields{k_out});
-                    if isempty(data)
-                        data = NaN(size(block.OutputPort(k_out).Data));
-                    end
-                    if iscell(data)
-                        data = cellfun(@(x) double(x), data{1});
-                    else
-                        data = double(data);
-                    end
-                    block.OutputPort(k_out).Data = data;
-                end
-            end
+function deal_outputs(self, block)
+    if self.n_out>0
+        outputs_msg = ceo.broker.sendrecv(self.outputs);
+        try
+            fields = fieldnames(outputs_msg);
+        catch ME
+            disp('ERROR in output_msg:')
+            outputs_msg
+            rethrow(ME)
         end
-@ 
+        for k_out=1:self.n_out
+            data = outputs_msg.(fields{k_out});
+            if isempty(data)
+                data = NaN(size(block.OutputPort(k_out).Data));
+            end
+            if iscell(data)
+                data = cellfun(@(x) double(x), data{1});
+            else
+                data = double(data);
+            end
+            block.OutputPort(k_out).Data = data;
+        end
+    end
+end
+@ %def deal_outputs 
 
 \subsection{The SCEO S--function}
 \label{sec:sceo-s-function}
