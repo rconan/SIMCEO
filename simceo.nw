@@ -446,11 +446,11 @@ The message that triggers the call to the \emph{Start} method is
                 self.calib_src = ceo.Source( **calibration_source_args )
 	
             self.sampleTime     = miscellaneous_args['sampleTime']
-            self.exposure_time  =
+            self.exposure_time  = \
               int(np.round(miscellaneous_args['exposure_time']/self.sampleTime))
             if self.exposure_time<=0:
                 self.exposure_time = 1
-            self.exposure_start =
+            self.exposure_start = \
               int(np.round(miscellaneous_args['exposure_start']/self.sampleTime))
 
 	    self.src.reset()
