@@ -92,6 +92,7 @@ from collections import OrderedDict
 import os
 import shelve
 import traceback
+import scipy.linalg as LA
 
 SIMCEOPATH = os.path.abspath(os.path.dirname(__file__))
 currentTime = 0.0;
@@ -127,6 +128,9 @@ class Timer(object):
 
 if __name__ == "__main__":
 
+    print "*********************************"
+    print "**   STARTING SIMCEO SERVER    **"
+    print "*********************************"
     agent = broker()
     agent.start()
  
@@ -575,7 +579,7 @@ and the dictionnary implementation is
         elif key=="ee80":
             return self.sensor.ee80().tolist()
         else:
-            c = np.dot(self.comm_matrix[key], self.slopes ).reshape(1,-1)
+            c = self.comm_matrix[key].dot( self.slopes ).reshape(1,-1)
             return c.tolist()
 @
 \paragraph{InitializeConditions}
@@ -615,7 +619,8 @@ The message that triggers a call to the \emph{InitializeConditions} method is
 <<SOpticalPath>>=
     def InitializeConditions(self, calibrations = None, 
                                    calibration_file = None,
-                                   SVD_truncation = 0):
+                                   SVD_truncation = 0,
+                                   decoupled = 0):
         print "@(SOpticalPath:InitializeConditions)>"
         if calibrations is not None:
             #import scipy.io.matlab as matlab
@@ -634,7 +639,7 @@ The message that triggers a call to the \emph{InitializeConditions} method is
                         C = db[key]
                         C.nThreshold = SVD_truncation[k]
                         k+=1
-                        self.comm_matrix[key] = C.M
+                        self.comm_matrix[key] = C
                         db[key] = C
                     db.close()
                     self.gmt.reset()
@@ -663,11 +668,22 @@ The message that triggers a call to the \emph{InitializeConditions} method is
                     self.sensor.propagate(self.src)
                     self.sensor.process()
 
-                    Dc = np.concatenate( D, axis=1 )
-                    C = CalibrationMatrix(Dc, SVD_truncation[k])
+                    flux_filter2 = None
+                    if decoupled:
+                        print "Decoupling the segment interaction matrices!"
+                        flux = self.sensor.flux.host()
+                        max_flux = flux.max()
+                        print max_flux
+                        flux_filter = flux>0.2*max_flux
+                        flux_filter2 = np.tile(flux_filter,(2,1))
+
+                    C = CalibrationMatrix(D, SVD_truncation[k],
+                                          decoupled=decoupled,
+                                          flux_filter2=flux_filter2,
+                                          n_mode = self.gmt.M1.modes.n_mode)
                     k+=1
                     #matlab.savemat('poke_matrix.mat',{'D':Dc})
-                    self.comm_matrix[key] = C.M
+                    self.comm_matrix[key] = C
 
             if calibration_file is not None:
                 print " . Saving command matrix to database %s!"%\
@@ -694,17 +710,60 @@ The \emph{CalibrationMatrix} class is a container for several matrices:
 <<CalibrationMatrix>>=
 class CalibrationMatrix(object):
 
-    def __init__(self, D, n):
+    def __init__(self, D, n, 
+                 decoupled=True, flux_filter2=None,
+                 n_mode = None):
         print "@(CalibrationMatrix)> Computing the SVD and the pseudo-inverse..."
-        self.D = D
         self._n = n
-        with Timer():
-            self.U,self.s,self.V = np.linalg.svd(D,full_matrices=False)
-            self.V = self.V.T
-            iS = 1./self.s
-            if self._n>0:
-                iS[-self._n:] = 0
-            self.M = np.dot(self.V,np.dot(np.diag(iS),self.U.T))
+        self.decoupled = decoupled
+        if self.decoupled:
+            self.nSeg = 7
+            self.D = D
+            D_s = [ np.concatenate([D[0][:,k*3:k*3+3],
+                                    D[1][:,k*3:k*3+3],
+                                    D[2][:,k*3:k*3+3],
+                                    D[3][:,k*3:k*3+3],
+                                    D[4][:,k*n_mode:k*n_mode+n_mode]],axis=1) for k in range(self.nSeg)]
+            lenslet_array_shape = flux_filter2.shape
+
+            ### Identification process
+            # The non-zeros entries of the calibration matrix are identified by filtering out all the values 
+            # which are a 1000 less than the maximum of the absolute values of the matrix and 
+            # collapsing (summing) the matrix along the mirror modes axis.
+            Qxy = [ np.reshape( np.sum(np.abs(D_s[k])>1e-2*np.max(np.abs(D_s[k])),axis=1)!=0 ,flux_filter2.shape ) for k in range(self.nSeg) ]
+            # The lenslet flux filter is applied to the lenslet segment filter:
+            Q = [ np.logical_and(X,flux_filter2) for X in Qxy ]
+            # A filter made of the lenslet used more than once is created:
+            Q3 = np.dstack(Q).reshape(flux_filter2.shape + (self.nSeg,))
+            Q3clps = np.sum(Q3,axis=2)
+            Q3clps = Q3clps>1
+            # The oposite filter is applied to the lenslet segment filter leading to 7 valid lenslet filters, 
+            # one filter per segment and no lenslet used twice:
+            self.VLs = [ np.logical_and(X,~Q3clps) for X in Q] 
+
+            # Each calibration matrix is reduced to the valid lenslet:
+            D_sr = [ D_s[k][self.VLs[k].ravel(),:] for k in range(self.nSeg) ]
+            print [ D_sr[k].shape for k in range(7)]
+            # Computing the SVD for each segment:
+            self.UsVT = [LA.svd(X,full_matrices=False) for X in D_sr]
+
+            # and the command matrix of each segment
+            self.M = [ self.__recon__(k) for k in range(self.nSeg) ]
+        else:
+            self.D = np.concatenate( D, axis=1 )
+            with Timer():
+                self.U,self.s,self.V = LA.svd(self.D,full_matrices=False)
+                self.V = self.V.T
+                iS = 1./self.s
+                if self._n>0:
+                    iS[-self._n:] = 0
+                self.M = np.dot(self.V,np.dot(np.diag(iS),self.U.T))
+            
+    def __recon__(self,k):
+        iS = 1./self.UsVT[k][1]
+        if self._n>0:
+            iS[-self._n:] = 0
+        return np.dot(self.UsVT[k][2].T,np.dot(np.diag(iS),self.UsVT[k][0].T))
             
     @property
     def nThreshold(self):
@@ -714,10 +773,19 @@ class CalibrationMatrix(object):
     def nThreshold(self, value):
         print "@(CalibrationMatrix)> Updating the pseudo-inverse..."
         self._n = value
-        iS = 1./self.s
-        if self._n>0:
-            iS[-self._n:] = 0
-        self.M = np.dot(self.V,np.dot(np.diag(iS),self.U.T))
+        if self.decoupled:
+            self.M = [ self.__recon__(k) for k in range(self.nSeg) ]
+        else:
+            iS = 1./self.s
+            if self._n>0:
+                iS[-self._n:] = 0
+            self.M = np.dot(self.V,np.dot(np.diag(iS),self.U.T))
+
+    def dot( self, s ):
+        if self.decoupled:
+            return np.concatenate([ np.dot(self.M[k],s[self.VLs[k].ravel()]) for k in range(self.nSeg) ])
+        else:
+            return np.dot(self.M,s)
 @
 \subsection{The Sensor abstract class}
 \label{sec:sens-abstr-class}
