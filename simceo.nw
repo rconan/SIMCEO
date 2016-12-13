@@ -1244,7 +1244,10 @@ function dump(self)
                'update',    self.update,...
                'outputs',   self.outputs,...
                'terminate', self.terminate);
-    mkdir('JSON',gcs);
+    [status,message,messageid] = mkdir('JSON',gcs);
+    if status<1
+        error(messageid,message)
+    end
     dirpath = fullfile('JSON',gcs);
     filename = [strrep(get_param(gcb,'Name'),char(10),' '),'.json'];
     savejson('',s,fullfile(dirpath,filename));
@@ -1513,7 +1516,7 @@ If checked, the guide star is propagated through the atmosphere using the model 
 
 #### Sample Time
 
-The sampling time of the block outputs that also corresponds to the exposure time of the detector of the wavefront sensor.
+The sampling time of the block outputs.
 
 ## Sensor Tab
 
@@ -1539,11 +1542,20 @@ The angular size of a pixel of the detector in arcsec.
 It is given by 
 $(\lambda/d)(b/a)$
 where both $a$ and $b$
-are integers
+are integers.
+$b$ ia set by the adjusting the binning factor and $a$ is set by adjusting the sampling factor.
 
 #### Field-of-view
 
 The field-of-view of the wavefront sensor in arcsec.
+
+#### Exposure time
+
+The detector exposure time. A value of -1 will set it to the same value that the exposure time.
+
+#### Exposure start
+
+Start of the exposure delay time.
 
 ## Outputs Tab
 
@@ -1620,6 +1632,12 @@ For M1_RTBM, the output vector is: $[R_{xyz},T_{xyz},BM]$ with $(R_{xyz} \equiv 
 
 The number of eigen values, from the singular value decomposition of the calibration matrix, that are discarded.
 If the calibration is loaded from a previously saved file, the threshold is re-applied and the pseudo-inverse is re-computed.
+
+#### Commands: Decoupling segments
+
+If checked, eaach segment is controlled independently from the others,
+the lenslets that span across two segments are rejected and there are 7 command matrices i.e. as many as the number of segments per mirror.
+Otherwise M1 and M2 mirrors are controlled in the same way that non segmented mirrors.
 
 @ 
 \subsubsection{GMT Mirror}
