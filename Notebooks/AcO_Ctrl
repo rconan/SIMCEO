@@ -1,0 +1,7 @@
+#!/bin/sh
+now=`date +"%Y%m%d%H%M%S"`
+echo $now
+filename="AcO_Ctrl_$now.zip"
+env PYTHONPATH=/home/ubuntu/CEO/python/ jupyter nbconvert --to markdown --ExecutePreprocessor.timeout=-1 --execute Active_Optics_Control-Decoupled-Noise-Asterism.ipynb
+zip $filename AcO_*.json AcO_*.npz Active_Optics_Control-Decoupled-Noise-Asterism_files/* Active_Optics_Control-Decoupled-Noise-Asterism.md
+aws s3 cp $filename s3://gmto.rconan/AcO_Ctrl/

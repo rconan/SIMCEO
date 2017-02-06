@@ -1,6 +1,7 @@
 *.mat -crlf -diff -merge
 *.mdlp -crlf -diff -merge
 *.slxp -crlf -diff -merge
+*.slx -crlf -diff -merge
 *.sldd -crlf -diff -merge
 *.p -crlf -diff -merge
 *.mexa64 -crlf -diff -merge

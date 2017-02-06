@@ -36,7 +36,7 @@ Both Matlab--ZMQ and ZeroMQ are shipped pre--compiled with SIMCEO.
 You need however to add, to the Matlab search path, the path to ZeroMQ.
 To do so, move Matlab current folder to SIMCEO folder and at the Matlab prompt enter:
 \\\texttt{>> addpath([pwd,'/matlab-zmq/your-os/lib/'])}\\\texttt{>> savepath}\\
-where \texttt{your-os} is either \texttt{unix}, \texttt{mac} or \texttt{windows}.
+where \texttt{your-os} is either \texttt{unix}, \texttt{mac} \texttt{windows7} or \texttt{windows10}.
 
 \subsection{UBJSON}
 \label{sec:ubjson}
@@ -73,9 +73,15 @@ The messages exchanged between the client and the server are formatted according
 \section{The simulink python module}
 \label{sec:simul-pyth-module}
 
+\begin{figure}
+  \centering
+  \includegraphics[width=\linewidth]{simulink.png}
+  \caption{The classes in the simulink python module and their relations with the CEO classes.}
+\end{figure}
 
 The python interface consists in the module \emph{simulink}:
 <<simceo.py>>=
+import sys
 import threading
 import time
 import zmq
@@ -85,8 +91,18 @@ import numpy as np
 from collections import OrderedDict
 import os
 import shelve
+import traceback
+import scipy.linalg as LA
 
 SIMCEOPATH = os.path.abspath(os.path.dirname(__file__))
+currentTime = 0.0;
+
+class testComm:
+    def __init__(self):
+        pass
+    def hello(self,N=1):
+        data = np.ones(N)
+        return dict(data=data.tolist())
 
 class Timer(object):
     def __init__(self, name=None):
@@ -112,6 +128,9 @@ class Timer(object):
 
 if __name__ == "__main__":
 
+    print "*********************************"
+    print "**   STARTING SIMCEO SERVER    **"
+    print "*********************************"
     agent = broker()
     agent.start()
  
@@ -142,10 +161,10 @@ class broker(threading.Thread):
         self.address = "tcp://*:3650"
         self.socket.bind(self.address)
         
-        self.sgmt = SGMT()
-        self.satm = SAtmosphere()
         self.ops = []
         self.n_op = 0
+        self.satm = SAtmosphere(self.ops)
+        self.sgmt = SGMT(self.ops, self.satm)
 
     def __del__(self):
 
@@ -171,25 +190,39 @@ def run(self):
 waits for a request from a Simulink S--function:
 <<broker run details>>=
 msg = self.socket.recv()
-jmsg = ubjson.loadb(msg)
-#print jmsg
+#jmsg = ubjson.loadb(msg)
+try:
+    jmsg = ubjson.loadb(msg)
+except Exception as E:
+    #print "Error raised by ubjson.loadb by that does not stop us!"
+    print msg
+    raise
 @
 The message received from the S--function contains
 \begin{itemize}
+\item the Simulink simulation time \emph{currentTime},
 \item a class identifier, \emph{class\_id}: \textbf{GMT} for \emph{SGMT}, \textbf{ATM} for \emph{SAtmosphere} or \textbf{OP} for \emph{SOpticalPath},
 \item a method identifier, \emph{method\_id}: \textbf{Start}, \textbf{Terminate}, \textbf{Update} or \textbf{Outputs},
 \item a dictionnary of the arguments to the method,  \emph{args}.
 \end{itemize}
 The class method is invoked with:
 <<broker run details>>=
+global currentTime
+currentTime = float( jmsg["currentTime"][0][0] )
 class_id  = jmsg["class_id"]
 method_id = jmsg["method_id"]
+#print "@ %.3fs: %s->%s"%(currentTime,jmsg["tag"],method_id)
+#tid = ceo.StopWatch()
 try:
+    #tid.tic()
     args_out = getattr( self[class_id], method_id )( **jmsg["args"] )
+    #tid.toc()
+    #print "%s->%s: %.2f"%(class_id,method_id,tid.elapsedTime) 
 except Exception as E:
-    print "The server as failed:"
-    print E
-    print "Recovering gracefully..."
+    print "@(broker)> The server has failed!"
+    print jmsg
+    traceback.print_exc()
+    print "@(broker)> Recovering gracefully..."
     class_id = ""
     args_out = "The server has failed!"
 @ 
@@ -207,9 +240,11 @@ def __getitem__(self,key):
         else:
             self.ops.append( SOpticalPath( len(self.ops) ,
                                            self.sgmt.gmt ,
-                                           self.satm.atm ) )            
+                                           self.satm ) )            
             self.n_op = len(self.ops)
             return self.ops[-1]
+    elif key=='testComm':
+        return testComm()
     else:
         raise KeyError("Available keys are: GMT, ATM or OP")
 @ 
@@ -219,12 +254,11 @@ If the ID tag of the optical path is just \textbf{OP}, a new \emph{SOpticalPath}
 When the \emph{Terminate} method of an \emph{SOpticalPath} object is called, the object is removed from the optical path list \emph{ops}. 
 <<broker run details>>=
 if class_id[:2]=="OP" and method_id=="Terminate":
-#    del(self.ops[int(class_id[2:])])
     self.ops.pop(0)
 @
 The value return by the method of the invoked object is sent back to the S--function:
 <<broker run details>>=
-self.socket.send(ubjson.dumpb(args_out))
+self.socket.send(ubjson.dumpb(args_out,no_float32=True))
 @
 
 \subsection{The S classes}
@@ -264,8 +298,8 @@ The \emph{SGMT} class is the interface class between a CEO \emph{GMT\_MX} object
 <<SGMT>>=
 class SGMT(Sfunction):
 
-    def __init__(self):
-        self.gmt = ceo.GMT_MX()
+    def __init__(self, ops, satm):
+        self.gmt  = ceo.GMT_MX()
 
     def Terminate(self, args=None):
         self.gmt = ceo.GMT_MX()
@@ -293,9 +327,7 @@ The message that triggers the call to the \emph{Start} method is
 @
 <<SGMT>>=
     def Start(self,mirror=None,mirror_args=None):
-        #print mirror_args
         self.gmt[mirror] = getattr(ceo,"GMT_"+mirror)( **mirror_args )
-        #print self.gmt[mirror].modes
         return "GMT"
 @
 
@@ -319,12 +351,10 @@ The message that triggers the call to the \emph{Update} method is
 @
 <<SGMT>>=
     def Update(self, mirror=None, inputs_args=None):
-        #print "Updating GMT!"
         for key in inputs_args:
             data = np.array( inputs_args[key], order='C', dtype=np.float64 )
             data = np.transpose( np.reshape( data , (-1,7) ) )
             if key=="TxyzRxyz":
-                #print np.array_str(data[:,:3], suppress_small=True)
                 self.gmt[mirror].motion_CS.origin[:]       = data[:,:3]
                 self.gmt[mirror].motion_CS.euler_angles[:] = data[:,3:]
                 self.gmt[mirror].motion_CS.update()
@@ -352,11 +382,11 @@ The \emph{SAtmosphere} class is the interface class between a CEO \emph{GmtAtmos
 <<SAtmosphere>>=
 class SAtmosphere(Sfunction):
 
-    def __init__(self):
+    def __init__(self, ops):
         self.atm = None
 
-    def Start(self,atmosphere_args=None):
-        self.atm = ceo.GmtAtmosphere( **atmosphere_args )
+    def Start(self, **kwargs):
+        self.atm = ceo.JGmtAtmosphere( **kwargs )
         return "ATM"
 
     def Terminate(self, args=None):
@@ -381,13 +411,12 @@ The \emph{SOpticalClass} gathers a source object \emph{src}, the GMT model objec
 <<SOpticalPath>>=
 class SOpticalPath(Sfunction):
 
-    def __init__(self, idx, gmt, atm):
+    def __init__(self, idx, gmt, satm):
         self.idx = idx
         self.gmt = gmt
-        self.atm = atm
+        self.satm = satm
 	self.sensor = None
-        self.D = {}
-@
+@ %def idx sensor
 \paragraph{Start}
 
 The message that triggers the call to the \emph{Start} method is
@@ -408,8 +437,10 @@ The message that triggers the call to the \emph{Start} method is
 <<SOpticalPath>>=
     def Start(self,source_args=None, sensor_class=None, sensor_args=None, 
               calibration_source_args=None, miscellaneous_args=None):
-        print miscellaneous_args
+        
+        self.propagateThroughAtm = miscellaneous_args['propagate_through_atmosphere']
         self.src = ceo.Source( **source_args )
+        
         if sensor_class is not None:
 
             self.sensor = getattr(ceo,sensor_class)( **sensor_args )
@@ -418,18 +449,30 @@ The message that triggers the call to the \emph{Start} method is
             else:
                 self.calib_src = ceo.Source( **calibration_source_args )
 	
+            self.sampleTime     = miscellaneous_args['sampleTime']
+            self.exposure_time  = \
+              int(np.round(miscellaneous_args['exposure_time']/self.sampleTime))
+            if self.exposure_time<=0:
+                self.exposure_time = 1
+            self.exposure_start = \
+              int(np.round(miscellaneous_args['exposure_start']/self.sampleTime))
+
 	    self.src.reset()
 	    self.gmt.reset()
             self.gmt.propagate(self.src)
-	    self.sensor.calibrate(self.calib_src,miscellaneous_args['intensity_threshold'])
-            if isinstance(self.sensor,(ceo.ShackHartmann,ceo.GeometricShackHartmann)):
+	    self.sensor.calibrate(self.calib_src,
+                                  miscellaneous_args['intensity_threshold'])
+            if isinstance(self.sensor,
+                          (ceo.ShackHartmann,
+                           ceo.GeometricShackHartmann,
+                           ceo.GMTLIB.TT7)):
                 print "# of valid slopes: %d"%self.sensor.n_valid_slopes
+                self.slopes = np.zeros( shape=(self.sensor.n_valid_slopes,1) )
 
-            self.poke_matrix = {}
             self.comm_matrix = {}
 
         return "OP"+str(self.idx)
-@
+@ %def src propagateThroughAtm exposure_start exposure_time
 \paragraph{Terminate}
 
 The message that triggers the call to the \emph{Terminate} method is
@@ -462,16 +505,21 @@ The message that triggers the call to the \emph{Update} method is
 @ 
 <<SOpticalPath>>=
     def Update(self, inputs=None):
-        #print "Updating OP!"
         self.src.reset()
         self.gmt.propagate(self.src)
-        #print "WFE RMS: %fnm"%self.src.wavefront.rms(-9)
-	if self.sensor is not None:
-	    self.sensor.reset()
+        if self.propagateThroughAtm:
+            #sys.stdout.write("\r@(SAtmosphere)> Simulation time: %.3gs"%self.stime)
+            #sys.stdout.flush()
+            #tid = ceo.StopWatch()
+            delta = self.src.rays.L/(self.src.rays.N_L-1)
+            nPx   = self.src.rays.N_L
+            #tid.tic()
+            self.satm.atm.ray_tracing(self.src,delta,nPx,delta,nPx,currentTime)
+            #tid.ping()
+        if self.sensor is not None and (currentTime/self.sampleTime)>self.exposure_start:
             self.sensor.propagate(self.src)
-            #self.sensor.readOut(T,0)
-            self.sensor.process()
-@
+@ 
+
 \paragraph{Outputs}
 
 The message that triggers the call to the \emph{Outputs} method is
@@ -487,10 +535,25 @@ The message that triggers the call to the \emph{Outputs} method is
 @ 
 <<SOpticalPath>>=
     def Outputs(self, outputs=None):
+        next_exposure_start = int(np.round(currentTime/self.sampleTime))
+        exposure_end        = self.exposure_time + self.exposure_start
+        if self.sensor is not None and next_exposure_start==exposure_end:
+            self.sensor.process()
+            if isinstance(self.sensor,(ceo.ShackHartmann,
+                                       ceo.GeometricShackHartmann,
+                                       ceo.GMTLIB.TT7)):
+                self.slopes = self.sensor.valid_slopes.host(
+                    shape=(self.sensor.n_valid_slopes,1) )
+
         doutputs = OrderedDict()
         for element in outputs:
-            #print self.src.wavefront.rms()
             doutputs[element] = self[element]
+
+        if self.sensor is not None and next_exposure_start==exposure_end:
+            self.sensor.reset()
+            #self.sensor.readOut(self.exposureTime,0)
+            self.exposure_start = next_exposure_start
+
         return doutputs
 @ 
 and the dictionnary implementation is
@@ -499,22 +562,24 @@ and the dictionnary implementation is
         if key=="wfe_rms":
             return self.src.wavefront.rms(units_exponent=-6).tolist()
         elif key=="segment_wfe_rms":
-            return self.src.phaseRms(where="segments",units_exponent=-6).tolist()
+            return self.src.phaseRms(where="segments",
+                                     units_exponent=-6).tolist()
         elif key=="piston":
-            return self.src.piston(where="pupil",units_exponent=-6).tolist()
+            return self.src.piston(where="pupil",
+                                   units_exponent=-6).tolist()
         elif key=="segment_piston":
-            return self.src.piston(where="segments",units_exponent=-6).tolist()
+            return self.src.piston(where="segments",
+                                   units_exponent=-6).tolist()
         elif key=="tiptilt":
-            return self.src.wavefront.gradientAverage(1,self.src.rays.L).host(units='arcsec').tolist()
+            return self.src.wavefront.gradientAverage(1,self.src.rays.L).\
+                host(units='arcsec').tolist()
         elif key=="segment_tiptilt":
-            return self.gmt.segmentsWavefrontGradient(self.src).host(units='arcsec').tolist()
+            return self.gmt.segmentsWavefrontGradient(self.src).\
+                host(units='arcsec').tolist()
         elif key=="ee80":
             return self.sensor.ee80().tolist()
         else:
-            c = np.dot(self.comm_matrix[key],
-                       self.sensor.valid_slopes.host(
-                           shape=(self.sensor.n_valid_slopes,1) ) ).reshape(1,-1)
-            c[c==0] = 1e-100
+            c = self.comm_matrix[key].dot( self.slopes ).reshape(1,-1)
             return c.tolist()
 @
 \paragraph{InitializeConditions}
@@ -554,52 +619,76 @@ The message that triggers a call to the \emph{InitializeConditions} method is
 <<SOpticalPath>>=
     def InitializeConditions(self, calibrations = None, 
                                    calibration_file = None,
-                                   SVD_truncation = 0):
+                                   SVD_truncation = 0,
+                                   decoupled = 0):
         print "@(SOpticalPath:InitializeConditions)>"
         if calibrations is not None:
             #import scipy.io.matlab as matlab
-            #print kwargs
             k = 0
             if not isinstance(SVD_truncation,list):
                 SVD_truncation = [SVD_truncation]
+                
             if calibration_file is not None:
                 filepath = os.path.join(SIMCEOPATH,"calibration_dbs",calibration_file)
                 db = shelve.open(filepath)
+                
                 if os.path.isfile(filepath+".dir"):
-                    print " . Loading command matrix from existing database %s!"%calibration_file
+                    print " . Loading command matrix from existing database %s!"%\
+                        calibration_file
                     for key in db:
                         C = db[key]
                         C.nThreshold = SVD_truncation[k]
                         k+=1
-                        self.comm_matrix[key] = C.M
+                        self.comm_matrix[key] = C
                         db[key] = C
                     db.close()
+                    self.gmt.reset()
+                    self.src.reset()
+                    self.sensor.reset()
+                    self.gmt.propagate(self.src)
+                    self.sensor.propagate(self.src)
+                    self.sensor.process()
                     return
-                #db = shelve.open(SIMCEOPATH+"/calibration_dbs/"+calibration_file)
+                
             with Timer():
                 for key in calibrations: # Through calibrations
                     calibs = calibrations[key]
                     if not isinstance(calibs,list):
                         calibs = [calibs]
                     D = []
-                    #print calibs
                     for c in calibs: # Through calib
-                        #print c
-                        D.append( self.gmt.calibrate(self.sensor,self.src,**c) )
                         self.gmt.reset()
+                        self.src.reset()
+                        self.sensor.reset()
+                        D.append( self.gmt.calibrate(self.sensor,self.src,**c) )
+                    self.gmt.reset()
+                    self.src.reset()
+                    self.sensor.reset()
+                    self.gmt.propagate(self.src)
+                    self.sensor.propagate(self.src)
+                    self.sensor.process()
 
-                    Dc = np.concatenate( D, axis=1 )
-                    C = CalibrationMatrix(Dc, SVD_truncation[k])
+                    flux_filter2 = None
+                    if decoupled:
+                        print "Decoupling the segment interaction matrices!"
+                        flux = self.sensor.flux.host()
+                        max_flux = flux.max()
+                        print max_flux
+                        flux_filter = flux>0.2*max_flux
+                        flux_filter2 = np.tile(flux_filter,(2,1))
+
+                    C = CalibrationMatrix(D, SVD_truncation[k],
+                                          decoupled=decoupled,
+                                          flux_filter2=flux_filter2,
+                                          n_mode = self.gmt.M1.modes.n_mode)
                     k+=1
-                    self.poke_matrix[key] = C
                     #matlab.savemat('poke_matrix.mat',{'D':Dc})
-                    self.comm_matrix[key] = self.poke_matrix[key].M
-
-                    if calibration_file is not None:
-                        print " . Saving command matrix to database %s!"%calibration_file
-                        db[str(key)] = C
+                    self.comm_matrix[key] = C
 
             if calibration_file is not None:
+                print " . Saving command matrix to database %s!"%\
+                    calibration_file
+                db[str(key)] = C
                 db.close()
 @ 
 
@@ -613,25 +702,70 @@ The \emph{CalibrationMatrix} class is a container for several matrices:
 \item the truncated inverse $M$ of $D$, $M=V\Lambda U^T$ where
   \begin{eqnarray}
     \label{eq:2}
-      \Lambda_i &=& 1/S_i \forall i<n \nonumber\\
-      \Lambda_i &=& 0 \forall i\geq n \nonumber    
+      \Lambda_i &=& 1/S_i,\quad \forall i<n \nonumber\\
+      \Lambda_i &=& 0,\quad \forall i\geq n \nonumber    
   \end{eqnarray}
 \end{itemize}
 
 <<CalibrationMatrix>>=
 class CalibrationMatrix(object):
 
-    def __init__(self, D, n):
+    def __init__(self, D, n, 
+                 decoupled=True, flux_filter2=None,
+                 n_mode = None):
         print "@(CalibrationMatrix)> Computing the SVD and the pseudo-inverse..."
-        self.D = D
         self._n = n
-        with Timer():
-            self.U,self.s,self.V = np.linalg.svd(D,full_matrices=False)
-            self.V = self.V.T
-            iS = 1./self.s
-            if self._n>0:
-                iS[-self._n:] = 0
-            self.M = np.dot(self.V,np.dot(np.diag(iS),self.U.T))
+        self.decoupled = decoupled
+        if self.decoupled:
+            self.nSeg = 7
+            self.D = D
+            D_s = [ np.concatenate([D[0][:,k*3:k*3+3],
+                                    D[1][:,k*3:k*3+3],
+                                    D[2][:,k*3:k*3+3],
+                                    D[3][:,k*3:k*3+3],
+                                    D[4][:,k*n_mode:k*n_mode+n_mode]],axis=1) for k in range(self.nSeg)]
+            for k in range(7):
+                D_s[k][np.isnan(D_s[k])] = 0
+            lenslet_array_shape = flux_filter2.shape
+
+            ### Identification process
+            # The non-zeros entries of the calibration matrix are identified by filtering out all the values 
+            # which are a 1000 less than the maximum of the absolute values of the matrix and 
+            # collapsing (summing) the matrix along the mirror modes axis.
+            Qxy = [ np.reshape( np.sum(np.abs(D_s[k])>1e-2*np.max(np.abs(D_s[k])),axis=1)!=0 ,flux_filter2.shape ) for k in range(self.nSeg) ]
+            # The lenslet flux filter is applied to the lenslet segment filter:
+            Q = [ np.logical_and(X,flux_filter2) for X in Qxy ]
+            # A filter made of the lenslet used more than once is created:
+            Q3 = np.dstack(Q).reshape(flux_filter2.shape + (self.nSeg,))
+            Q3clps = np.sum(Q3,axis=2)
+            Q3clps = Q3clps>1
+            # The oposite filter is applied to the lenslet segment filter leading to 7 valid lenslet filters, 
+            # one filter per segment and no lenslet used twice:
+            self.VLs = [ np.logical_and(X,~Q3clps) for X in Q] 
+
+            # Each calibration matrix is reduced to the valid lenslet:
+            D_sr = [ D_s[k][self.VLs[k].ravel(),:] for k in range(self.nSeg) ]
+            print [ D_sr[k].shape for k in range(self.nSeg)]
+            # Computing the SVD for each segment:
+            self.UsVT = [LA.svd(X,full_matrices=False) for X in D_sr]
+
+            # and the command matrix of each segment
+            self.M = [ self.__recon__(k) for k in range(self.nSeg) ]
+        else:
+            self.D = np.concatenate( D, axis=1 )
+            with Timer():
+                self.U,self.s,self.V = LA.svd(self.D,full_matrices=False)
+                self.V = self.V.T
+                iS = 1./self.s
+                if self._n>0:
+                    iS[-self._n:] = 0
+                self.M = np.dot(self.V,np.dot(np.diag(iS),self.U.T))
+            
+    def __recon__(self,k):
+        iS = 1./self.UsVT[k][1]
+        if self._n>0:
+            iS[-self._n:] = 0
+        return np.dot(self.UsVT[k][2].T,np.dot(np.diag(iS),self.UsVT[k][0].T))
             
     @property
     def nThreshold(self):
@@ -641,16 +775,52 @@ class CalibrationMatrix(object):
     def nThreshold(self, value):
         print "@(CalibrationMatrix)> Updating the pseudo-inverse..."
         self._n = value
-        iS = 1./self.s
-        if self._n>0:
-            iS[-self._n:] = 0
-        self.M = np.dot(self.V,np.dot(np.diag(iS),self.U.T))
+        if self.decoupled:
+            self.M = [ self.__recon__(k) for k in range(self.nSeg) ]
+        else:
+            iS = 1./self.s
+            if self._n>0:
+                iS[-self._n:] = 0
+            self.M = np.dot(self.V,np.dot(np.diag(iS),self.U.T))
+
+    def dot( self, s ):
+        if self.decoupled:
+            return np.concatenate([ np.dot(self.M[k],s[self.VLs[k].ravel()]) for k in range(self.nSeg) ])
+        else:
+            return np.dot(self.M,s)
+@
+\subsection{The Sensor abstract class}
+\label{sec:sens-abstr-class}
+
+<<Sensor abstract class>>=
+class Sensor:
+    __metaclass__ = ABCMeta
+    @abstractmethod
+    def calibrate(self):
+        pass
+    @abstractmethod
+    def reset(self):
+        pass
+    @abstractmethod
+    def analyze(self):
+        pass
+    @abstractmethod
+    def propagate(self):
+        pass
+    @abstractmethod
+    def process(self):
+        pass
 @ 
 
 \section{The ceo Matlab package}
 \label{sec:ceo-matlab-package}
 
-
+\begin{figure}
+  \centering
+  \input{simceo.matlab.tex}
+  \caption{SIMCEO Matlab client flowchart.}
+  \label{fig:1}
+\end{figure}
 \subsection{The broker class}
 \label{sec:matlab-broker-class}
 
@@ -666,6 +836,7 @@ classdef (Sealed=true) broker < handle
         instance_id % The AWS instance ID number
         public_ip % The AWS instance public IP
         zmqReset % ZMQ connection reset flag
+	elapsedTime
     end
     
     properties (Access=private)
@@ -695,10 +866,13 @@ classdef (Sealed=true) broker < handle
         <<request and reply>>
 
         <<reset ZMQ socket>>
+
+        <<time spent>>
+        
     end
 
 end
-@ %def awspath instance_id ctx socket public_ip zmqReset instance_end_state etc
+@ 
 The Matlab broker class starts an AWS machine and sets--up ZeroMQ context and socket.
 <<broker client>>=
 function self = broker(varargin)
@@ -706,6 +880,8 @@ function self = broker(varargin)
     self.ctx    = zmq.core.ctx_new();
     self.socket = zmq.core.socket(self.ctx, 'ZMQ_REQ');
     self.zmqReset = true;
+    
+    self.elapsedTime = 0;
 
     currentpath = mfilename('fullpath');
     k = strfind(currentpath,filesep);
@@ -715,8 +891,8 @@ function self = broker(varargin)
     self.instance_id     = cfg.aws_instance_id;
     <<broker client: AWS instance launch>>
 end
-@
-If not instance ID is given, a new machine is launched based on a given AWS AMI.
+@ %def instance_id awspath etc self.elapsedTime zmqReset 
+If no instance ID is given, a new machine is launched based on a given AWS AMI.
 <<broker client: AWS instance launch>>=
 if isempty(self.instance_id)
     run_instance(self)
@@ -725,7 +901,7 @@ else
     start_instance(self)
     self.instance_end_state = 'stop';
 end
-@
+@ %def instance_end_state 
 \subsubsection{run\_instance}
 \label{sec:run_instance}
 
@@ -739,7 +915,7 @@ function run_instance(self)
     <<setting up cloudwatch>>
     <<getting the public IP>>    
 end
-@ 
+@ %def run_instance
 The sequence of operations is:
 \begin{enumerate}
 \item launching the instance,
@@ -754,7 +930,7 @@ end
 instance = loadjson(instance_json);
 self.instance_id = instance.Instances{1}(1).InstanceId;
 @ 
-\item waiting for the confirmation that the instance is running,
+\item waiting for the confirmation that the instance is running (See page \pageref{itm:instanceRunning}),
 \item waiting for the confirmation that the instance has finished to initialize,
 <<waiting for initialization>>=
 fprintf('>>>> WAITING FOR AWS INSTANCE %s TO INITIALIZE ... \n',self.instance_id)
@@ -793,7 +969,7 @@ if status~=0
     error('Setting alarm for AWS machine %s failed!',self.instance_id')
 end
 @ 
-\item getting the public IP of the instance.
+\item getting the public IP of the instance (See page \pageref{itm:publicIP}).
 \end{enumerate}
 @
 \subsubsection{terminate\_instance}
@@ -812,7 +988,7 @@ function terminate_instance(self)
         end
     end
 end
-@
+@ %def terminate_instance
 \subsubsection{start\_instance}
 \label{sec:start_instance}
 
@@ -823,7 +999,7 @@ function start_instance(self)
     <<waiting for the running state>>
     <<getting the public IP>>
 end
-@
+@ %def start_instance
 The sequence of operations is:
 \begin{enumerate}
 \item starting the instance:
@@ -838,7 +1014,7 @@ if status~=0
     error('Starting AWS machine %s failed:\n%s',self.instance_id,cmdout)
 end
 @ 
-\item waiting for the confirmation that the instance is running
+\item waiting for the confirmation that the instance is running\label{itm:instanceRunning}
 <<waiting for the running state>>=
 fprintf('>>>> WAITING FOR AWS INSTANCE %s TO START ... \n',self.instance_id)
 tic
@@ -850,7 +1026,7 @@ if status~=0
     error('Starting AWS machine %s failed!',self.instance_id')
 end
 @ 
-\item getting the public IP of the instance.
+\item getting the public IP of the instance\label{itm:publicIP}.
 <<getting the public IP>>=
 cmd = sprintf(['%s ec2 describe-instances --instance-ids %s',...
                ' --output text',...  
@@ -863,7 +1039,7 @@ if status~=0
 end
 self.public_ip = strtrim(public_ip_);
 fprintf('\n ==>> machine is up and running @%s\n',self.public_ip)
-@
+@ %def public_ip
 \end{enumerate}
 @
 Once the instance is running, ZeroMQ connects the client to the server port of ZeroMQ on the AWS instance:
@@ -916,10 +1092,11 @@ function self = getBroker(varargin)
     end
     self = this;
 end
-@
+@ %def getBroker
 \emph{sendrecv} sends a request to the server and returns the server reply:
 <<request and reply>>= 
 function jmsg = sendrecv(send_msg)
+    tid = tic;
     self = ceo.broker.getBroker();
     jsend_msg = saveubjson('',send_msg);
     zmq.core.send( self.socket, uint8(jsend_msg) );
@@ -940,8 +1117,9 @@ function jmsg = sendrecv(send_msg)
         disp('Server issue!')
         set_param(gcs,'SimulationCommand','stop')
     end    
+    self.elapsedTime = self.elapsedTime + toc(tid);
 end
-@ 
+@ %def sendrecv
 \emph{resetZMQ} resets the ZeroMQ socket
 <<reset ZMQ socket>>=
 function resetZMQ()
@@ -966,15 +1144,24 @@ function setZmqResetFlag(val)
     self.zmqReset = val;
 end
 @ 
+Time spent communicating:
+<<time spent>>=
+function timeSpent()
+    self = ceo.broker.getBroker();
+    fprintf('@(broker)> Time spent communicating with the server: %.3fs\n',...
+    			self.elapsedTime)
+    self.elapsedTime = 0;
+end
+@ 
 
-\subsection{The messages class}
-\label{sec:the-messages-class}
+\subsection{The dealer class}
+\label{sec:the-dealer-class}
 
-The \emph{messages} class contains the messages that are sent by the different functions of the S--function.
-Each CEO block instantiates a \emph{messages} class and tailors the messages in the initialization of the block mask.
+The \emph{dealer} class contains the messages that are sent by the different functions of the S--function.
+Each CEO block instantiates a \emph{dealer} class and tailors the messages in the initialization of the block mask.
 It also holds the number of inputs and outputs of the block as well as the dimensions of the inputs and outputs.  
-<<messages.m>>=
-classdef messages < handle
+<<dealer.m>>=
+classdef dealer < handle
 
     properties
         n_in
@@ -991,155 +1178,218 @@ classdef messages < handle
     end
 
     properties (Dependent)
-       class_id
+        currentTime
+        class_id
     end
 
     properties (Access=private)
-        p_class_id
+        p_currentTime
+        p_class_id		
+        tid
     end
 
     methods
         
-        <<messages public methods>>
+        <<dealer public methods>>
             
     end
     
     methods (Access=private)
         
-        <<messages private methods>>
+        <<dealer private methods>>
 
     end
  end
-@ %def n_in dims_in n_out dims_out start update outputs terminate init
-There are five messages that corresponds to 4 four S--function routines:
-<<messages public methods>>=
-    function self = messages(class_id,tag)
-            self.p_class_id = class_id;
-            self.tag = tag;
-            proto_msg = struct('class_id',self.p_class_id,...
-                               'method_id','',...
-                               'tag',self.tag,...
-                               'args',struct('args',[])); 
-            % Start
-            self.start     = proto_msg;
-            self.start.method_id = 'Start';
-            % InitializeConditions
-            self.init      = proto_msg;
-            self.init .method_id = 'InitializeConditions'; 
-            % Outputs
-            self.update    = proto_msg;
-            self.update.method_id  = 'Update';
-            self.outputs   = proto_msg;
-            self.outputs.method_id = 'Outputs';
-            % Terminate
-            self.terminate = proto_msg;
-            self.terminate.method_id = 'Terminate';
-        end
 @ 
-The \emph{class\_id} property triggers an update of all the messages:         
-<<messages public methods>>=
-        function val = get.class_id(self)
-            val = self.p_class_id;
-        end
-        function set.class_id(self,val)
-            self.p_class_id = val;
-            self.start.class_id     = val;
-            self.init.class_id      = val;
-            self.update.class_id    = val;
-            self.outputs.class_id   = val;
-            self.terminate.class_id = val;
-        end
+There are five messages that corresponds to 4 four S--function routines:
+<<dealer public methods>>=
+function self = dealer(class_id,tag)
+
+    self.p_class_id = class_id;
+    self.tag = strrep(tag,char(10),' ');
+    proto_msg = struct('currentTime',[],...
+                       'class_id',self.p_class_id,...
+                       'method_id','',...
+                       'tag',self.tag,...
+                       'args',struct('args',[])); 
+    % Start
+    self.start     = proto_msg;
+    self.start.method_id = 'Start';
+    % InitializeConditions
+    self.init      = proto_msg;
+    self.init .method_id = 'InitializeConditions'; 
+    % Outputs
+    self.update    = proto_msg;
+    self.update.method_id  = 'Update';
+    self.outputs   = proto_msg;
+    self.outputs.method_id = 'Outputs';
+    % Terminate
+    self.terminate = proto_msg;
+    self.terminate.method_id = 'Terminate';
+end
+@ 
+Both, the \emph{currentTime} and the \emph{class\_id} properties trigger an update of all the messages:         
+<<dealer public methods>>=
+function val = get.class_id(self)
+    val = self.p_class_id;
+end
+function set.class_id(self,val)
+    self.p_class_id = val;
+    self.start.class_id     = val;
+    self.init.class_id      = val;
+    self.update.class_id    = val;
+    self.outputs.class_id   = val;
+    self.terminate.class_id = val;
+end
+function val = get.currentTime(self)
+    val = self.p_currentTime;
+end
+function set.currentTime(self,val)
+    self.p_currentTime = val;
+    self.start.currentTime     = val;
+    self.init.currentTime      = val;
+    self.update.currentTime    = val;
+    self.outputs.currentTime   = val;
+    self.terminate.currentTime = val;
+end
+
 @
-\subsubsection{IO\_setup}
-\label{sec:io_setup}
+\subsubsection{Public methods}
+\label{sec:public-methods}
 
 The properties of the blocks inputs and outputs are set with:
-<<messages public methods>>=        
-        function IO_setup(self,block)
-            block.NumInputPorts  = self.n_in;
-            for k_in=1:self.n_in
-                block.InputPort(k_in).Dimensions  = self.dims_in{k_in};
-                block.InputPort(k_in).DatatypeID  = 0;  % double
-                block.InputPort(k_in).Complexity  = 'Real';
-                block.InputPort(k_in).DirectFeedthrough = true;
-            end
-            block.NumOutputPorts = self.n_out;
-            for k_out=1:self.n_out
-                block.OutputPort(k_out).Dimensions   = self.dims_out{k_out};
-                block.OutputPort(k_out).DatatypeID   = 0; % double
-                block.OutputPort(k_out).Complexity   = 'Real';
-                block.OutputPort(k_out).SamplingMode = 'sample';
-            end
-            block.SampleTimes = self.sampleTime;
-        end
-@
+<<dealer public methods>>=        
+function IO_setup(self,block)
+    block.NumInputPorts  = self.n_in;
+    for k_in=1:self.n_in
+        block.InputPort(k_in).Dimensions  = self.dims_in{k_in};
+        block.InputPort(k_in).DatatypeID  = 0;  % double
+        block.InputPort(k_in).Complexity  = 'Real';
+        block.InputPort(k_in).DirectFeedthrough = true;
+    end
+    block.NumOutputPorts = self.n_out;
+    for k_out=1:self.n_out
+        block.OutputPort(k_out).Dimensions   = self.dims_out{k_out};
+        block.OutputPort(k_out).DatatypeID   = 0; % double
+        block.OutputPort(k_out).Complexity   = 'Real';
+        block.OutputPort(k_out).SamplingMode = 'sample';
+    end
+    block.SampleTimes = self.sampleTime;
+end
+@ %def IO_setup
+The names of the output ports are set with:
+<<dealer public methods>>=
+function output_names(self,port_handle)
+    for k_out=1:self.n_out
+        set(port_handle.Outport(k_out), ...
+	    'SignalNameFromLabel', self.outputs.args.outputs{k_out})
+    end
+end
+@ %def output_names
 The \emph{deal} method sends the message to the CEO server, waits for the server replies and process the reply.
-<<messages public methods>>=        
-        function deal(self,block,tag)
-            switch tag
-              case 'start'
-                deal_start(self);
-              case 'init'
-                deal_init(self);
-              case 'IO'
-                deal_inputs(self, block);
-                deal_outputs(self, block);
-              case 'terminate'
-                deal_terminate(self);
-              otherwise
-                fprintf(['@(messages)> deal: Unknown tag;',...
-                         ' valid tags are: start, init, IO and terminate!'])
-            end
-        end
-@ 
-<<messages private methods>>=        
-        function deal_start(self)
-            ceo.broker.resetZMQ()
-            jmsg = ceo.broker.sendrecv(self.start);
-            self.class_id = char(jmsg);
-            fprintf('@(%s)> Object created!\n',self.tag)
-        end
+<<dealer public methods>>=        
+function deal(self,block,tag)
+    self.currentTime = {block.currentTime};
+    switch tag
+      case 'start'
+        deal_start(self);
+      case 'init'
+        deal_init(self);
+      case 'IO'
+        deal_inputs(self, block);
+        deal_outputs(self, block);
+      case 'terminate'
+        deal_terminate(self);
+      otherwise
+        fprintf(['@(dealer)> deal: Unknown tag;',...
+                 ' valid tags are: start, init, IO and terminate!'])
+    end
+end
+@ %def deal
+The messages are concatenated into a single json file with:
+<<dealer public methods>>=
+function dump(self)
+    s = struct('start',     self.start,...
+               'init',      self.init,...
+               'update',    self.update,...
+               'outputs',   self.outputs,...
+               'terminate', self.terminate);
+    [status,message,messageid] = mkdir('JSON',gcs);
+    if status<1
+        error(messageid,message)
+    end
+    dirpath = fullfile('JSON',gcs);
+    filename = [strrep(get_param(gcb,'Name'),char(10),' '),'.json'];
+    savejson('',s,fullfile(dirpath,filename));
+end
+@ %def dump
+\subsubsection{Private methods}
+\label{sec:private-methods}
 
-        function deal_init(self)
-            jmsg = ceo.broker.sendrecv(self.init);
-            fprintf('@(%s)> Object calibrated!\n',self.tag)
-        end
-        
-        function deal_terminate(self)
-            jmsg = ceo.broker.sendrecv(self.terminate);
-            fprintf('@(%s)> %s\n',self.tag,jmsg)
-            ceo.broker.setZmqResetFlag(true)
-        end
-@ 
+<<dealer private methods>>=        
+function deal_start(self)
+    ceo.broker.resetZMQ()
+    jmsg = ceo.broker.sendrecv(self.start);
+    self.class_id = char(jmsg);
+    fprintf('@(%s)> Object created!\n',self.tag)
+    self.tid = tic;
+end
+
+function deal_init(self)
+    ceo.broker.sendrecv(self.init);
+    fprintf('@(%s)> Object calibrated!\n',self.tag)
+    self.tid = tic;
+end
+
+function deal_terminate(self)
+    toc(self.tid)
+    jmsg = ceo.broker.sendrecv(self.terminate);
+    dump(self)
+    fprintf('@(%s)> %s\n',self.tag,jmsg)
+    ceo.broker.setZmqResetFlag(true)
+    ceo.broker.timeSpent()
+end
+@ %def deal_start deal_init deal_terminate
 \emph{deal\_inputs} reads the block inputs and affects the input data to the corresponding field in the update message:
-<<messages private methods>>=                
-        function deal_inputs(self, block)
-            if self.n_in>0
-                fields = fieldnames(self.update.args.inputs_args);
-                for k_in=1:self.n_in
-                    self.update.args.inputs_args.(fields{k_in}) = ...
-                                          reshape(block.InputPort(k_in).Data,1,[]);
-                end
-            end
-            ceo.broker.sendrecv(self.update);
+<<dealer private methods>>=                
+function deal_inputs(self, block)
+    if self.n_in>0
+        fields = fieldnames(self.update.args.inputs_args);
+        for k_in=1:self.n_in
+            self.update.args.inputs_args.(fields{k_in}) = ...
+                                  reshape(block.InputPort(k_in).Data,1,[]);
         end
-@ 
+    end
+    ceo.broker.sendrecv(self.update);
+end
+@ %def deal_inputs
 \emph{deal\_outputs} affects the inputs from the CEO server to the corresponding data field of the block outputs:
-<<messages private methods>>=                
-        function deal_outputs(self, block)
-            if self.n_out>0
-                outputs_msg = ceo.broker.sendrecv(self.outputs);
-                fields = fieldnames(outputs_msg);
-                for k_out=1:self.n_out
-                    data = outputs_msg.(fields{k_out});
-                    if isempty(data)
-                        data = NaN(size(block.OutputPort(k_out).Data));
-                    end
-                    block.OutputPort(k_out).Data = data;
-                end
-            end
+<<dealer private methods>>=                
+function deal_outputs(self, block)
+    if self.n_out>0
+        outputs_msg = ceo.broker.sendrecv(self.outputs);
+        try
+            fields = fieldnames(outputs_msg);
+        catch ME
+            disp('ERROR in output_msg:')
+            outputs_msg
+            rethrow(ME)
         end
-@ 
+        for k_out=1:self.n_out
+            data = outputs_msg.(fields{k_out});
+            if isempty(data)
+                data = NaN(size(block.OutputPort(k_out).Data));
+            end
+            if iscell(data)
+                data = cellfun(@(x) double(x), data{1});
+            else
+                data = double(data);
+            end
+            block.OutputPort(k_out).Data = data;
+        end
+    end
+end
+@ %def deal_outputs 
 
 \subsection{The SCEO S--function}
 \label{sec:sceo-s-function}
@@ -1203,13 +1453,14 @@ block.RegBlockMethod('Start', @Start);
 block.RegBlockMethod('Outputs', @Outputs);     % Required
 block.RegBlockMethod('Update', @Update);
 block.RegBlockMethod('Terminate', @Terminate); % 
-%block.RegBlockMethod('PostPropagationSetup', @PostPropagationSetup);
+block.RegBlockMethod('PostPropagationSetup', @PostPropagationSetup);
 block.RegBlockMethod('InitializeConditions', @InitializeConditions);
 %end setup
 
 function PostPropagationSetup(block)
 msg_box   = get(gcbh,'UserData');
 fprintf('__ %s: PostPropagationSetup __\n',msg_box.tag)
+output_names(msg_box,get(gcbh, 'PortHandles'))
 
 function InitializeConditions(block)
 msg_box   = get(gcbh,'UserData');
@@ -1226,7 +1477,6 @@ msg_box   = get(gcbh,'UserData');
 fprintf('__ %s: START  __\n',msg_box.tag)
 deal(msg_box,block,'start')
 %set(gcbh,'UserData',msg_box)
-tic
 %end Start
 @
 \subsubsection{Outputs}
@@ -1252,10 +1502,9 @@ function Update(block)
 
 function Terminate(block)
 
-toc
 msg_box = get(gcbh,'UserData');
 deal(msg_box,block,'terminate')
-set(gcbh,'UserData',[])
+%set(gcbh,'UserData',[])
 %end Terminate
 @ 
 
@@ -1322,6 +1571,22 @@ the \# of rays per lenslet corresponds to the number of rays across one lenslet,
 * `GeometricShackHartmann`: A shack-Hartmann model where the centroids are derived 
 from the finite difference of the wavefront averaged on the lenslets; 
 the \# of rays per lenslet corresponds to the number of rays across one lenslet.
+* `TT7`:  A shack-Hartmann model where the centroids are derived 
+from the finite difference of the wavefront averaged on each segment of the GMT;
+the \# of rays per lenslet corresponds to the number of rays across the telescope diameter.
+
+#### Source FWHM
+
+The full width at half maximum of the source intensity profile assuming a Gaussian intensity distribution.
+The FWHM is given in units of pixel before binning.
+
+#### Propagate through the atmosphere
+
+If checked, the guide star is propagated through the atmosphere using the model defined in the atmosphere block.
+
+#### Sample Time
+
+The sampling time of the block outputs.
 
 ## Sensor Tab
 
@@ -1337,29 +1602,48 @@ The physical length of one lenslet project on M1 in meter.
 
 The detector resolution of the optical sensor in pixel.
 
+#### Intensity threshold
+
+The threshold on the lenslet integrated flux. Any lenslet, whose fraction of integrated intensity with respect to a fully illuminated lenslet is less than the threshold, is discarded.
+
 #### Pixel scale
 
 The angular size of a pixel of the detector in arcsec.
 It is given by 
 $(\lambda/d)(b/a)$
 where both $a$ and $b$
-are integers
+are integers.
+$b$ ia set by the adjusting the binning factor and $a$ is set by adjusting the sampling factor.
+
+#### Field-of-view
+
+The field-of-view of the wavefront sensor in arcsec.
+
+#### Exposure time
+
+The detector exposure time. A value of -1 will set it to the same value that the exposure time.
+
+#### Exposure start
+
+Start of the exposure delay time.
 
 ## Outputs Tab
 
 ### Star
 
+Each output is derived on the telescope full pupil and/or on each segment.
+
 #### Wavefront error rms
 
-The RMS, over the telescope pupil, of the guide star wavefront in meter.
+The RMS of the guide star wavefront in micron.
 
 #### Piston
 
-The piston component of the guide star wavefront in meter.
+The piston component of the guide star wavefront in micron.
 
-#### Segment Piston
+#### Tip-tilt
 
-The piston component of the guide star wavefront, per segment, in meter.
+The tip-tilt component of the guide star wavefront in arcsec.
  
 ### Sensor
 
@@ -1418,6 +1702,12 @@ For M1_RTBM, the output vector is: $[R_{xyz},T_{xyz},BM]$ with $(R_{xyz} \equiv 
 
 The number of eigen values, from the singular value decomposition of the calibration matrix, that are discarded.
 If the calibration is loaded from a previously saved file, the threshold is re-applied and the pseudo-inverse is re-computed.
+
+#### Commands: Decoupling segments
+
+If checked, eaach segment is controlled independently from the others,
+the lenslets that span across two segments are rejected and there are 7 command matrices i.e. as many as the number of segments per mirror.
+Otherwise M1 and M2 mirrors are controlled in the same way that non segmented mirrors.
 
 @ 
 \subsubsection{GMT Mirror}

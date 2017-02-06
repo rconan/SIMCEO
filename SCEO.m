@@ -44,13 +44,14 @@ block.RegBlockMethod('Start', @Start);
 block.RegBlockMethod('Outputs', @Outputs);     % Required
 block.RegBlockMethod('Update', @Update);
 block.RegBlockMethod('Terminate', @Terminate); % 
-%block.RegBlockMethod('PostPropagationSetup', @PostPropagationSetup);
+block.RegBlockMethod('PostPropagationSetup', @PostPropagationSetup);
 block.RegBlockMethod('InitializeConditions', @InitializeConditions);
 %end setup
 
 function PostPropagationSetup(block)
 msg_box   = get(gcbh,'UserData');
 fprintf('__ %s: PostPropagationSetup __\n',msg_box.tag)
+output_names(msg_box,get(gcbh, 'PortHandles'))
 
 function InitializeConditions(block)
 msg_box   = get(gcbh,'UserData');
@@ -63,7 +64,6 @@ msg_box   = get(gcbh,'UserData');
 fprintf('__ %s: START  __\n',msg_box.tag)
 deal(msg_box,block,'start')
 %set(gcbh,'UserData',msg_box)
-tic
 %end Start
 
 function Outputs(block)
@@ -81,8 +81,7 @@ function Update(block)
 
 function Terminate(block)
 
-toc
 msg_box = get(gcbh,'UserData');
 deal(msg_box,block,'terminate')
-set(gcbh,'UserData',[])
+%set(gcbh,'UserData',[])
 %end Terminate
