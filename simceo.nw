@@ -724,6 +724,8 @@ class CalibrationMatrix(object):
                                     D[2][:,k*3:k*3+3],
                                     D[3][:,k*3:k*3+3],
                                     D[4][:,k*n_mode:k*n_mode+n_mode]],axis=1) for k in range(self.nSeg)]
+            for k in range(7):
+                D_s[k][np.isnan(D_s[k])] = 0
             lenslet_array_shape = flux_filter2.shape
 
             ### Identification process
@@ -743,7 +745,7 @@ class CalibrationMatrix(object):
 
             # Each calibration matrix is reduced to the valid lenslet:
             D_sr = [ D_s[k][self.VLs[k].ravel(),:] for k in range(self.nSeg) ]
-            print [ D_sr[k].shape for k in range(7)]
+            print [ D_sr[k].shape for k in range(self.nSeg)]
             # Computing the SVD for each segment:
             self.UsVT = [LA.svd(X,full_matrices=False) for X in D_sr]
 
