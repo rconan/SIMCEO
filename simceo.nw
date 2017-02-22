@@ -1163,8 +1163,10 @@ classdef dealer < handle
 
     properties
         n_in
+        n_in_ceo
         dims_in
         n_out
+        n_out_ceo
         dims_out
         start
         update
@@ -1172,6 +1174,8 @@ classdef dealer < handle
         terminate
         init
         sampleTime
+        enabled
+        triggered
         tag
     end
 
@@ -1224,6 +1228,9 @@ function self = dealer(class_id,tag)
     % Terminate
     self.terminate = proto_msg;
     self.terminate.method_id = 'Terminate';
+    
+    self.enabled = true;
+    self.triggered = true;
 end
 @ 
 Both, the \emph{currentTime} and the \emph{class\_id} properties trigger an update of all the messages:         
@@ -1263,6 +1270,7 @@ function IO_setup(self,block)
         block.InputPort(k_in).Dimensions  = self.dims_in{k_in};
         block.InputPort(k_in).DatatypeID  = 0;  % double
         block.InputPort(k_in).Complexity  = 'Real';
+        block.InputPort(k_in).SamplingMode = 'sample';
         block.InputPort(k_in).DirectFeedthrough = true;
     end
     block.NumOutputPorts = self.n_out;
@@ -1293,6 +1301,10 @@ function deal(self,block,tag)
         deal_start(self);
       case 'init'
         deal_init(self);
+      case 'inputs'
+        deal_inputs(self, block);
+      case 'outputs'
+        deal_outputs(self, block);
       case 'IO'
         deal_inputs(self, block);
         deal_outputs(self, block);
@@ -1350,40 +1362,54 @@ end
 @ %def deal_start deal_init deal_terminate
 \emph{deal\_inputs} reads the block inputs and affects the input data to the corresponding field in the update message:
 <<dealer private methods>>=                
-function deal_inputs(self, block)
-    if self.n_in>0
-        fields = fieldnames(self.update.args.inputs_args);
-        for k_in=1:self.n_in
-            self.update.args.inputs_args.(fields{k_in}) = ...
-                                  reshape(block.InputPort(k_in).Data,1,[]);
-        end
+ function deal_inputs(self, block)
+    n = self.n_in - self.n_in_ceo;
+    if n>0
+        self.enabled   = block.InputPort(1).Data;
+        self.triggered = block.InputPort(2).Data;
     end
-    ceo.broker.sendrecv(self.update);
+    if self.enabled
+        if self.n_in_ceo>0
+            fields = fieldnames(self.update.args.inputs_args);
+            for k_in=1:self.n_in_ceo
+                self.update.args.inputs_args.(fields{k_in+n}) = ...
+                    reshape(block.InputPort(k_in).Data,1,[]);
+            end
+        end
+        ceo.broker.sendrecv(self.update);
+    end
 end
 @ %def deal_inputs
 \emph{deal\_outputs} affects the inputs from the CEO server to the corresponding data field of the block outputs:
 <<dealer private methods>>=                
 function deal_outputs(self, block)
     if self.n_out>0
-        outputs_msg = ceo.broker.sendrecv(self.outputs);
-        try
-            fields = fieldnames(outputs_msg);
-        catch ME
-            disp('ERROR in output_msg:')
-            outputs_msg
-            rethrow(ME)
-        end
-        for k_out=1:self.n_out
-            data = outputs_msg.(fields{k_out});
-            if isempty(data)
-                data = NaN(size(block.OutputPort(k_out).Data));
+        if self.enabled && self.triggered
+            outputs_msg = ceo.broker.sendrecv(self.outputs);
+            try
+                fields = fieldnames(outputs_msg);
+            catch ME
+                disp('ERROR in output_msg:')
+                disp(outputs_msg)
+                rethrow(ME)
             end
-            if iscell(data)
-                data = cellfun(@(x) double(x), data{1});
-            else
-                data = double(data);
+            for k_out=1:self.n_out
+                data = outputs_msg.(fields{k_out});
+                if isempty(data)
+                    data = NaN(size(block.OutputPort(k_out).Data));
+                end
+                if iscell(data)
+                    data = cellfun(@(x) double(x), data{1});
+                else
+                    data = double(data);
+                end
+                block.OutputPort(k_out).Data = data;
             end
-            block.OutputPort(k_out).Data = data;
+        else
+            fprintf('@(%s)> Disabled!\n',self.tag)
+            for k_out=1:self.n_out
+                block.OutputPort(k_out).Data = zeros(1,block.OutputPort(k_out).Dimensions);
+            end            
         end
     end
 end
@@ -1485,7 +1511,6 @@ function Outputs(block)
 
 msg_box   = get(gcbh,'UserData');
 %fprintf('__ %s: OUTPUTS __\n',msg_box.class_id)
-
 deal(msg_box,block,'IO')
 
 %end Outputs
@@ -1495,6 +1520,9 @@ deal(msg_box,block,'IO')
 
 <<SCEO Terminate>>=
 function Update(block)
+
+%msg_box   = get(gcbh,'UserData');
+%deal(msg_box,block,'inputs')
 
 %end Update
 

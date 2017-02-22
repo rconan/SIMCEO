@@ -1,6 +1,11 @@
 body {
-    background: #696969;
+    background: #404040;
     color: #ccc;
+}
+
+a {
+	color: #7fffd4;
+	font-family: 'Hammersmith One', sans-serif;
 }
 
 h1 {

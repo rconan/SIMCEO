@@ -199,6 +199,9 @@ global pos inStr
                 object=reshape(object,dim);
             end
             pos=pos+adv;
+            if strcmp(type,'U')
+                object = char(object);
+            end
             return;
         else
             endpos=matching_bracket(inStr,pos);
@@ -207,6 +210,9 @@ global pos inStr
             [object, adv]=parse_block(type,count,varargin{:});
             pos=pos+adv;
             parse_char(']');
+            if strcmp(type,'U')
+                object = char(object);
+            end
             return;
         end
     end
