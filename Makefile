@@ -9,6 +9,7 @@ matlab: simceo.nw maskdoc
 	mkdir -p +ceo
 	$(TANGLE) -Rbroker.m simceo.nw > +ceo/broker.m
 	$(TANGLE) -Rdealer.m simceo.nw > +ceo/dealer.m
+	$(TANGLE) -Rliftprm.m simceo.nw > +ceo/liftprm.m
 	$(TANGLE) -RSCEO.m simceo.nw > SCEO.m
 maskdoc: simceo.nw
 	mkdir -p masks

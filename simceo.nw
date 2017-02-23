@@ -1406,7 +1406,6 @@ function deal_outputs(self, block)
                 block.OutputPort(k_out).Data = data;
             end
         else
-            fprintf('@(%s)> Disabled!\n',self.tag)
             for k_out=1:self.n_out
                 block.OutputPort(k_out).Data = zeros(1,block.OutputPort(k_out).Dimensions);
             end            
@@ -1414,6 +1413,29 @@ function deal_outputs(self, block)
     end
 end
 @ %def deal_outputs 
+
+\subsection{The loadprm function}
+\label{sec:loadprm-function}
+
+
+<<liftprm.m>>=
+function args = liftprm(prm_src)
+if isstruct(prm_src)
+    args = prm_src;
+elseif ischar(prm_src)
+    [~,~,ext] = fileparts(prm_src);
+    switch ext
+        case '.ubj'
+            args = loadubjson(prm_src,'simplifyCell',1);
+        case '.json'
+            args = loadjson(prm_src,'simplifyCell',1);
+        otherwise
+            error('simceo:loadprm:file_error','Unrecognized file type! Valid file extensions are ubj or json!')
+    end
+else
+    error('simceo:loadprm:type_error','Input must be either a structure or a filename!')
+end
+@ 
 
 \subsection{The SCEO S--function}
 \label{sec:sceo-s-function}
