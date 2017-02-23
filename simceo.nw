@@ -496,10 +496,10 @@ The message that triggers the call to the \emph{Update} method is
 @ 
 <<SOpticalPath>>=
     def Update(self, inputs=None):
-        #+self.src
-        self.src.reset()
-        self.gmt.propagate(self.src)
-        self.sensor.propagate(self.src)
+        +self.src
+        #self.src.reset()
+        #self.gmt.propagate(self.src)
+        #self.sensor.propagate(self.src)
 @ 
 
 \paragraph{Outputs}
@@ -517,14 +517,16 @@ The message that triggers the call to the \emph{Outputs} method is
 @ 
 <<SOpticalPath>>=
     def Outputs(self, outputs=None):
-        if self.sensor is not None:
+        if self.sensor is None:
+            doutputs = OrderedDict()
+            for element in outputs:
+                doutputs[element] = self[element]
+        else:
             #+self.sensor
             self.sensor.process()
-        doutputs = OrderedDict()
-        for element in outputs:
-            doutputs[element] = self[element]
-        if self.sensor is not None:
-            #+self.sensor
+            doutputs = OrderedDict()
+            for element in outputs:
+                doutputs[element] = self[element]
             self.sensor.reset()
 
         return doutputs
