@@ -546,11 +546,13 @@ and the dictionnary implementation is
             return self.src.piston(where="segments",
                                    units_exponent=-6).tolist()
         elif key=="tiptilt":
-            return self.src.wavefront.gradientAverage(1,self.src.rays.L).\
-                host(units='arcsec').tolist()
+            buf = self.src.wavefront.gradientAverage(1,self.src.rays.L)
+            buf *= ceo.constants.RAD2ARCSEC
+            return buf.tolist()
         elif key=="segment_tiptilt":
-            return self.gmt.segmentsWavefrontGradient(self.src).\
-                host(units='arcsec').tolist()
+            buf = self.src.segmentsWavefrontGradient().T
+            buf *= ceo.constants.RAD2ARCSEC
+            return buf.tolist()
         elif key=="ee80":
             #print "EE80=%.3f or %.3f"%(self.sensor.ee80(from_ghost=False),self.sensor.ee80(from_ghost=True))
             return self.sensor.ee80(from_ghost=False).tolist()
