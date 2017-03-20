@@ -438,7 +438,7 @@ The message that triggers the call to the \emph{Start} method is
     def Start(self,source_args=None, sensor_class=None, sensor_args=None, 
               calibration_source_args=None, miscellaneous_args=None):
         
-        self.propagateThroughAtm = miscellaneous_args['propagate_through_atmosphere']
+        #self.propagateThroughAtm = miscellaneous_args['propagate_through_atmosphere']
         self.src = ceo.Source( **source_args )
         
         if sensor_class is not None:
@@ -449,27 +449,18 @@ The message that triggers the call to the \emph{Start} method is
             else:
                 self.calib_src = ceo.Source( **calibration_source_args )
 	
-            self.sampleTime     = miscellaneous_args['sampleTime']
-            self.exposure_time  = \
-              int(np.round(miscellaneous_args['exposure_time']/self.sampleTime))
-            if self.exposure_time<=0:
-                self.exposure_time = 1
-            self.exposure_start = \
-              int(np.round(miscellaneous_args['exposure_start']/self.sampleTime))
-
 	    self.src.reset()
 	    self.gmt.reset()
             self.gmt.propagate(self.src)
-	    self.sensor.calibrate(self.calib_src,
-                                  miscellaneous_args['intensity_threshold'])
-            if isinstance(self.sensor,
-                          (ceo.ShackHartmann,
-                           ceo.GeometricShackHartmann,
-                           ceo.GMTLIB.TT7)):
-                print "# of valid slopes: %d"%self.sensor.n_valid_slopes
-                self.slopes = np.zeros( shape=(self.sensor.n_valid_slopes,1) )
+            self.sensor.reset()
+            self.sensor.calibrate(self.src,0)
+	    #self.sensor.calibrate(self.calib_src, sensor_args['intensityThreshold'])
+            #print "intensity_threshold: %f"%sensor_args['intensityThreshold']
 
+            self.sensor.reset()
             self.comm_matrix = {}
+
+            self.src>>filter(None,(self.gmt,self.sensor))
 
         return "OP"+str(self.idx)
 @ %def src propagateThroughAtm exposure_start exposure_time
@@ -505,19 +496,10 @@ The message that triggers the call to the \emph{Update} method is
 @ 
 <<SOpticalPath>>=
     def Update(self, inputs=None):
-        self.src.reset()
-        self.gmt.propagate(self.src)
-        if self.propagateThroughAtm:
-            #sys.stdout.write("\r@(SAtmosphere)> Simulation time: %.3gs"%self.stime)
-            #sys.stdout.flush()
-            #tid = ceo.StopWatch()
-            delta = self.src.rays.L/(self.src.rays.N_L-1)
-            nPx   = self.src.rays.N_L
-            #tid.tic()
-            self.satm.atm.ray_tracing(self.src,delta,nPx,delta,nPx,currentTime)
-            #tid.ping()
-        if self.sensor is not None and (currentTime/self.sampleTime)>self.exposure_start:
-            self.sensor.propagate(self.src)
+        +self.src
+        #self.src.reset()
+        #self.gmt.propagate(self.src)
+        #self.sensor.propagate(self.src)
 @ 
 
 \paragraph{Outputs}
@@ -535,24 +517,17 @@ The message that triggers the call to the \emph{Outputs} method is
 @ 
 <<SOpticalPath>>=
     def Outputs(self, outputs=None):
-        next_exposure_start = int(np.round(currentTime/self.sampleTime))
-        exposure_end        = self.exposure_time + self.exposure_start
-        if self.sensor is not None and next_exposure_start==exposure_end:
+        if self.sensor is None:
+            doutputs = OrderedDict()
+            for element in outputs:
+                doutputs[element] = self[element]
+        else:
+            #+self.sensor
             self.sensor.process()
-            if isinstance(self.sensor,(ceo.ShackHartmann,
-                                       ceo.GeometricShackHartmann,
-                                       ceo.GMTLIB.TT7)):
-                self.slopes = self.sensor.valid_slopes.host(
-                    shape=(self.sensor.n_valid_slopes,1) )
-
-        doutputs = OrderedDict()
-        for element in outputs:
-            doutputs[element] = self[element]
-
-        if self.sensor is not None and next_exposure_start==exposure_end:
+            doutputs = OrderedDict()
+            for element in outputs:
+                doutputs[element] = self[element]
             self.sensor.reset()
-            #self.sensor.readOut(self.exposureTime,0)
-            self.exposure_start = next_exposure_start
 
         return doutputs
 @ 
@@ -571,20 +546,24 @@ and the dictionnary implementation is
             return self.src.piston(where="segments",
                                    units_exponent=-6).tolist()
         elif key=="tiptilt":
-            return self.src.wavefront.gradientAverage(1,self.src.rays.L).\
-                host(units='arcsec').tolist()
+            buf = self.src.wavefront.gradientAverage(1,self.src.rays.L)
+            buf *= ceo.constants.RAD2ARCSEC
+            return buf.tolist()
         elif key=="segment_tiptilt":
-            return self.gmt.segmentsWavefrontGradient(self.src).\
-                host(units='arcsec').tolist()
+            buf = self.src.segmentsWavefrontGradient().T
+            buf *= ceo.constants.RAD2ARCSEC
+            return buf.tolist()
         elif key=="ee80":
-            return self.sensor.ee80().tolist()
+            #print "EE80=%.3f or %.3f"%(self.sensor.ee80(from_ghost=False),self.sensor.ee80(from_ghost=True))
+            return self.sensor.ee80(from_ghost=False).tolist()
         else:
-            c = self.comm_matrix[key].dot( self.slopes ).reshape(1,-1)
+            c = self.comm_matrix[key].dot( self.sensor.Data ).reshape(1,-1)
             return c.tolist()
 @
 \paragraph{InitializeConditions}
 
 The message that triggers a call to the \emph{InitializeConditions} method is
+
 <<SOpticalPath InitializeConditions message>>=     
 {
 "class_id": "OP",
@@ -595,99 +574,146 @@ The message that triggers a call to the \emph{InitializeConditions} method is
       {
           "M2_TT":
           {
-            "mirror": "M2",
-            "mode": "segment tip-tilt",
-            "stroke": 1e-6
-          }
-          "M12_Rxyz": [
-          {
-            "mirror": "M1",
-            "mode": "Rxyz",
-            "stroke": 1e-6
+              "method_id": "calibrate",
+              "args":
+              {
+                  "mirror": "M2",
+                  "mode": "segment tip-tilt",
+                  "stroke": 1e-6
+              }
           },
+      },
+      "pseudo_inverse":
+      {
+          "nThreshold": null
+      },
+      "filename": null
+  }	  
+}
+<<SOpticalPath InitializeConditions message>>=     
+{
+"class_id": "OP",
+"method_id": "InitializeConditions",
+"args": 
+  {
+      "calibrations":
+      {
+          "M12_Rxyz": [
+              {
+                  "method_id": "calibrate",
+                  "args":
+                  {
+                      "mirror": "M1",
+                      "mode": "Rxyz",
+                      "stroke": 1e-6
+                  }
+              },
+              {
+                  "method_id": "calibrate",
+                  "args":
+                  {
+                      "mirror": "M2",
+                      "mode": "Rxyz",
+                      "stroke": 1e-6
+                  }
+              }]
+      },
+      "pseudo-inverse":
+      {
+          "nThreshold": [0],
+          "concatenate": true
+      },
+      "filename": null
+  }
+}
+<<SOpticalPath InitializeConditions message>>=     
+{
+"class_id": "OP",
+"method_id": "InitializeConditions",
+"args": 
+  {
+      "calibrations":
+      {		
+          "AGWS":		
           {
-            "mirror": "M2",
-            "mode": "Rxyz",
-            "stroke": 1e-6
-          }]
-      }
-      "calibration_file": null,
-      "SVD_truncation": 0
+              "method_id": "AGWS_calibrate",
+              "args":
+              {
+                  "decoupled": true,
+                  "stroke": [1e-6,1e-6,1e-6,1e-6,1e-6],
+                  "fluxThreshold": 0.5
+              }
+          }
+      },
+      "pseudo-inverse":
+      {
+          "nThreshold": [2,2,2,2,2,2,0],
+          "insertZeros": [null,null,null,null,null,null,[2,4,6]]
+      },
+      "filename": null
   }
 }
 @
 <<SOpticalPath>>=
-    def InitializeConditions(self, calibrations = None, 
-                                   calibration_file = None,
-                                   SVD_truncation = 0,
-                                   decoupled = 0):
+    def InitializeConditions(self, calibrations=None, filename=None,
+                             pseudo_inverse=None):
         print "@(SOpticalPath:InitializeConditions)>"
         if calibrations is not None:
-            #import scipy.io.matlab as matlab
-            k = 0
-            if not isinstance(SVD_truncation,list):
-                SVD_truncation = [SVD_truncation]
-                
-            if calibration_file is not None:
-                filepath = os.path.join(SIMCEOPATH,"calibration_dbs",calibration_file)
+            if filename is not None:
+                filepath = os.path.join(SIMCEOPATH,"calibration_dbs",filename)
                 db = shelve.open(filepath)
                 
                 if os.path.isfile(filepath+".dir"):
-                    print " . Loading command matrix from existing database %s!"%\
-                        calibration_file
+                    print " . Loading command matrix from existing database %s!"%filename
                     for key in db:
                         C = db[key]
-                        C.nThreshold = SVD_truncation[k]
-                        k+=1
+                        #C.nThreshold = [SVD_truncation[k]]
                         self.comm_matrix[key] = C
                         db[key] = C
                     db.close()
-                    self.gmt.reset()
-                    self.src.reset()
-                    self.sensor.reset()
-                    self.gmt.propagate(self.src)
-                    self.sensor.propagate(self.src)
-                    self.sensor.process()
                     return
                 
             with Timer():
-                for key in calibrations: # Through calibrations
-                    calibs = calibrations[key]
-                    if not isinstance(calibs,list):
-                        calibs = [calibs]
-                    D = []
-                    for c in calibs: # Through calib
+                if len(calibrations)>1:
+                    for key in calibrations: # Through calibrations
+                        calibs = calibrations[key]
+                        if not isinstance(calibs,list):
+                            calibs = [calibs]
+                        D = []
+                        for c in calibs: # Through calib
+                            self.gmt.reset()
+                            self.src.reset()
+                            self.sensor.reset()
+                            D.append( getattr( self.gmt, c["method_id"] )( self.sensor, 
+                                                                           self.src, 
+                                                                           **c["args"] ) )
                         self.gmt.reset()
                         self.src.reset()
                         self.sensor.reset()
-                        D.append( self.gmt.calibrate(self.sensor,self.src,**c) )
-                    self.gmt.reset()
-                    self.src.reset()
-                    self.sensor.reset()
-                    self.gmt.propagate(self.src)
-                    self.sensor.propagate(self.src)
-                    self.sensor.process()
+                        C = ceo.CalibrationVault(D, **pseudo_inverse )
+                        self.comm_matrix[key] = C
+                else:
+                    for key in calibrations: # Through calibrations
+                        calibs = calibrations[key]
+                        #Gif not isinstance(calibs,list):
+                        #    calibs = [calibs]
+                        #GD = []
+                        #for c in calibs: # Through calib
+                        self.gmt.reset()
+                        self.src.reset()
+                        self.sensor.reset()
+                        C = getattr( self.gmt, calibs["method_id"] )( self.sensor, 
+                                                                 self.src,
+                                                                 calibrationVaultKwargs=pseudo_inverse, 
+                                                                 **calibs["args"])
+                        self.gmt.reset()
+                        self.src.reset()
+                        self.sensor.reset()
+                        self.comm_matrix[key] = C
 
-                    flux_filter2 = None
-                    if decoupled:
-                        print "Decoupling the segment interaction matrices!"
-                        flux = self.sensor.flux.host()
-                        max_flux = flux.max()
-                        print max_flux
-                        flux_filter = flux>0.2*max_flux
-                        flux_filter2 = np.tile(flux_filter,(2,1))
 
-                    C = CalibrationMatrix(D, SVD_truncation[k],
-                                          decoupled=decoupled,
-                                          flux_filter2=flux_filter2,
-                                          n_mode = self.gmt.M1.modes.n_mode)
-                    k+=1
-                    #matlab.savemat('poke_matrix.mat',{'D':Dc})
-                    self.comm_matrix[key] = C
-
-            if calibration_file is not None:
-                print " . Saving command matrix to database %s!"%\
-                    calibration_file
+            if filename is not None:
+                print " . Saving command matrix to database %s!"%filename
                 db[str(key)] = C
                 db.close()
 @ 
