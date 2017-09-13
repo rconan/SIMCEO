@@ -8,6 +8,7 @@ classdef (Sealed=true) broker < handle
         instance_id % The AWS instance ID number
         public_ip % The AWS instance public IP
         zmqReset % ZMQ connection reset flag
+        elapsedTime
     end
     
     properties (Access=private)
@@ -24,6 +25,8 @@ classdef (Sealed=true) broker < handle
             self.ctx    = zmq.core.ctx_new();
             self.socket = zmq.core.socket(self.ctx, 'ZMQ_REQ');
             self.zmqReset = true;
+            
+            self.elapsedTime = 0;
 
             currentpath = mfilename('fullpath');
             k = strfind(currentpath,filesep);
@@ -180,6 +183,7 @@ classdef (Sealed=true) broker < handle
         end
 
         function jmsg = sendrecv(send_msg)
+            tid = tic;
             self = ceo.broker.getBroker();
             jsend_msg = saveubjson('',send_msg);
             zmq.core.send( self.socket, uint8(jsend_msg) );
@@ -200,6 +204,7 @@ classdef (Sealed=true) broker < handle
                 disp('Server issue!')
                 set_param(gcs,'SimulationCommand','stop')
             end    
+            self.elapsedTime = self.elapsedTime + toc(tid);
         end
 
         function resetZMQ()
@@ -234,6 +239,14 @@ classdef (Sealed=true) broker < handle
             self = ceo.broker.getBroker();
             self.zmqReset = val;
         end
+
+        function timeSpent()
+            self = ceo.broker.getBroker();
+            fprintf('@(broker)> Time spent communicating with the server: %.3fs\n',...
+                                self.elapsedTime)
+            self.elapsedTime = 0;
+        end
+        
     end
 
 end
