@@ -870,6 +870,7 @@ classdef (Sealed=true) broker < handle
         instance_end_state
         ctx
         socket
+        urlbase
     end
     
     methods
@@ -882,7 +883,6 @@ classdef (Sealed=true) broker < handle
 
         <<start AWS instance>>
 
-        <<terminate AWS instance>>
     end
     
     methods(Static)
@@ -890,7 +890,7 @@ classdef (Sealed=true) broker < handle
         <<instanciation and retrieval>>
 
         <<request and reply>>
-
+g
         <<reset ZMQ socket>>
 
         <<time spent>>
@@ -912,8 +912,8 @@ function self = broker(varargin)
     currentpath = mfilename('fullpath');
     k = strfind(currentpath,filesep);
     self.etc = fullfile(currentpath(1:k(end)),'..','etc');
-    cfg = loadjson(fullfile(self.etc,'simceo.json'));
-    self.awspath         = cfg.awsclipath;
+    cfg = jsondecode(fileread(fullfile(self.etc,'simceo.json')));
+    self.urlbase         = 'http://gmto.modeling.s3-website-us-west-2.amazonaws.com';
     self.instance_id     = cfg.aws_instance_id;
     <<broker client: AWS instance launch>>
 end
@@ -934,12 +934,31 @@ end
 If no instance ID is set in the \texttt{simceo.json} configuration file, a new instance is created from the AMI whose ID is given in \texttt{etc/ec2runinst.json} file. 
 <<launch AWS AMI>>=
 function run_instance(self)
-    <<launching an instance>>
-    <<waiting for the running state>>
-    <<waiting for initialization>>
-    <<branding instance>>
-    <<setting up cloudwatch>>
-    <<getting the public IP>>    
+  url = sprintf("%s/simceo_aws_server.html?action=create",self.urlbase);
+  fprintf('%s\n',url)
+  [status,h] = web(url,'-new','-noaddressbox','-notoolbar');
+  if status~=0
+    error('Creating machine failed:\n')
+  end
+  pause(20)
+  url = sprintf('%s/ami-7e34791e.json',self.urlbase);
+  fprintf('%s\n',url)
+  instance=jsondecode(char(webread(url))');
+  self.instance_id = instance.ID
+  file = fullfile(self.etc,'simceo.json')
+  cfg = jsondecode(fileread(file));
+  cfg.aws_instance_id = instance.ID
+  savejson('',cfg,file)
+  <<getting the public IP>>
+end
+@
+<<launch AWS AMI (old)>>=
+function run_instance(self)
+  <<launching an instance>>
+  <<waiting for initialization>>
+  <<branding instance>>
+  <<setting up cloudwatch>>
+  <<getting the public IP>>    
 end
 @ %def run_instance
 The sequence of operations is:
@@ -1022,7 +1041,6 @@ If an instance ID has been set in the \texttt{simceo.json} configuration file, t
 <<start AWS instance>>=
 function start_instance(self)
     <<starting an instance>>
-    <<waiting for the running state>>
     <<getting the public IP>>
 end
 @ %def start_instance
@@ -1030,41 +1048,36 @@ The sequence of operations is:
 \begin{enumerate}
 \item starting the instance:
 <<starting an instance>>=
-cmd = sprintf(['%s ec2 start-instances --instance-ids %s',...
-               ' --profile gmto.control'],...
-              self.awspath,self.instance_id);
-fprintf('%s\n',cmd)
 fprintf('@(broker)> Starting AWS machine %s...\n',self.instance_id)
-[status,cmdout] = system(cmd);
+
+url = sprintf('%s/simceo_aws_server.html?action=start&instance_ID=%s',self.urlbase,self.instance_id);
+fprintf('%s\n',url)
+[status,h] = web(url,'-new','-noaddressbox','-notoolbar');
 if status~=0
-    error('Starting AWS machine %s failed:\n%s',self.instance_id,cmdout)
+  error('Starting AWS machine %s failed:\n',self.instance_id)
 end
-@ 
-\item waiting for the confirmation that the instance is running\label{itm:instanceRunning}
-<<waiting for the running state>>=
-fprintf('>>>> WAITING FOR AWS INSTANCE %s TO START ... \n',self.instance_id)
-tic
-[status,~] = system(sprintf(['%s ec2 wait instance-running --instance-ids %s',...
-                    ' --profile gmto.control'],...
-                            self.awspath,self.instance_id));
-toc
-if status~=0
-    error('Starting AWS machine %s failed!',self.instance_id')
-end
+pause(3)
 @ 
 \item getting the public IP of the instance\label{itm:publicIP}.
 <<getting the public IP>>=
-cmd = sprintf(['%s ec2 describe-instances --instance-ids %s',...
-               ' --output text',...  
-               ' --query Reservations[*].Instances[*].PublicIpAddress',...
-               ' --profile gmto.control'],...
-              self.awspath,self.instance_id);
-[status,public_ip_] = system(cmd);
-if status~=0
-    error('Getting AWS machine public IP failed!')
+url = sprintf('%s/%s.json',self.urlbase,self.instance_id);
+fprintf('%s\n',url)
+instance=jsondecode(char(webread(url))');
+fprintf('STATE: %s\n',instance.STATE)
+n=1;
+while (~strcmp(instance.STATE,'running')) && (n<=3)
+  fprintf('Probing instance state (20s wait time) ...\n')
+  pause(20)
+  instance=jsondecode(char(webread(url))');
+  n = n + 1;
 end
-self.public_ip = strtrim(public_ip_);
+if (~strcmp(instance.STATE,'running')) && (n>3)
+  error('Failed to start server!')
+end
+self.public_ip = instance.IP;
 fprintf('\n ==>> machine is up and running @%s\n',self.public_ip)
+%pause(2)
+%close(h)
 @ %def public_ip
 \end{enumerate}
 @
@@ -1087,7 +1100,6 @@ The allocated ZeroMQ ressources are released with:
 <<release ressources>>=
 function delete(self)
     fprintf('@(broker)> Deleting %s\n',class(self))
-    terminate_instance(self)    
     zmq.core.close(self.socket);
     zmq.core.ctx_shutdown(self.ctx);
     zmq.core.ctx_term(self.ctx);
@@ -1110,7 +1122,7 @@ function self = getBroker(varargin)
 % Launch the AWS instance 'instance_id' and returns a pointer to the broker object
     
     persistent this
-    if isempty(this)
+    if isempty(this) || ~isvalid(this)
         fprintf('~~~~~~~~~~~~~~~~~~~')
         fprintf('\n SIMCEO CLIENT!\n')
         fprintf('~~~~~~~~~~~~~~~~~~~\n')

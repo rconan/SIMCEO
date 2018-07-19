@@ -12,5 +12,5 @@ elseif ischar(prm_src)
             error('simceo:loadprm:file_error','Unrecognized file type! Valid file extensions are ubj or json!')
     end
 else
-    error('simceo:liftprm:type_error','Input must be either a structure or a filename!')
+    error('simceo:loadprm:type_error','Input must be either a structure or a filename!')
 end

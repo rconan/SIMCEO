@@ -16,6 +16,7 @@ classdef (Sealed=true) broker < handle
         instance_end_state
         ctx
         socket
+        urlbase
     end
     
     methods
@@ -31,8 +32,8 @@ classdef (Sealed=true) broker < handle
             currentpath = mfilename('fullpath');
             k = strfind(currentpath,filesep);
             self.etc = fullfile(currentpath(1:k(end)),'..','etc');
-            cfg = loadjson(fullfile(self.etc,'simceo.json'));
-            self.awspath         = cfg.awsclipath;
+            cfg = jsondecode(fileread(fullfile(self.etc,'simceo.json')));
+            self.urlbase         = 'http://gmto.modeling.s3-website-us-west-2.amazonaws.com';
             self.instance_id     = cfg.aws_instance_id;
             if isempty(self.instance_id)
                 run_instance(self)
@@ -45,117 +46,77 @@ classdef (Sealed=true) broker < handle
 
         function delete(self)
             fprintf('@(broker)> Deleting %s\n',class(self))
-            terminate_instance(self)    
             zmq.core.close(self.socket);
             zmq.core.ctx_shutdown(self.ctx);
             zmq.core.ctx_term(self.ctx);
         end
 
         function run_instance(self)
-            cmd = sprintf(['%s ec2 run-instances --profile gmto.control ',...
-                           '--cli-input-json file://%s'],...
-                          self.awspath, fullfile(self.etc,'ec2runinst.json'));
-            [status,instance_json] = system(cmd);
-            if status~=0
-                error('Launching AWS AMI failed:\n%s',instance_json)
-            end
-            instance = loadjson(instance_json);
-            self.instance_id = instance.Instances{1}(1).InstanceId;
-            fprintf('>>>> WAITING FOR AWS INSTANCE %s TO START ... \n',self.instance_id)
-            tic
-            [status,~] = system(sprintf(['%s ec2 wait instance-running --instance-ids %s',...
-                                ' --profile gmto.control'],...
-                                        self.awspath,self.instance_id));
-            toc
-            if status~=0
-                error('Starting AWS machine %s failed!',self.instance_id')
-            end
-            fprintf('>>>> WAITING FOR AWS INSTANCE %s TO INITIALIZE ... \n',self.instance_id)
-            fprintf('(This usually takes a few minutes!)\n')
-            tic
-            cmd = sprintf(['%s ec2 wait instance-status-ok --instance-ids %s ',...
-                           '--profile gmto.control'],...
-                          self.awspath,self.instance_id);
-            [status,~] = system(cmd);
-            toc
-            if status~=0
-                error('Starting AWS machine %s failed!',self.instance_id')
-            end
-            [~,username] = system('whoami');
-            [~,hostname] = system('hostname');
-            cmd = sprintf('%s ec2 create-tags --resources %s --tags Key=Name,Value=%s',...
-                          self.awspath,self.instance_id,...
-                          ['SIMCEO(',strtrim(username),...
-                           '@',strtrim(hostname),')']);
-            system(cmd);
-            cmd = sprintf(['%s cloudwatch put-metric-alarm ',...
-                           '--profile gmto.control ',...
-                           '--dimensions Name=InstanceId,Value=%s ',...
-                           '--cli-input-json file://%s'],...
-                          self.awspath,...
-                          self.instance_id,...
-                          fullfile(self.etc,'cloudwatch.json'));
-            [status,~] = system(cmd);
-            if status~=0
-                error('Setting alarm for AWS machine %s failed!',self.instance_id')
-            end
-            cmd = sprintf(['%s ec2 describe-instances --instance-ids %s',...
-                           ' --output text',...  
-                           ' --query Reservations[*].Instances[*].PublicIpAddress',...
-                           ' --profile gmto.control'],...
-                          self.awspath,self.instance_id);
-            [status,public_ip_] = system(cmd);
-            if status~=0
-                error('Getting AWS machine public IP failed!')
-            end
-            self.public_ip = strtrim(public_ip_);
-            fprintf('\n ==>> machine is up and running @%s\n',self.public_ip)    
+          url = sprintf("%s/simceo_aws_server.html?action=create",self.urlbase);
+          fprintf('%s\n',url)
+          [status,h] = web(url,'-new','-noaddressbox','-notoolbar');
+          if status~=0
+            error('Creating machine failed:\n')
+          end
+          pause(20)
+          url = sprintf('%s/ami-7e34791e.json',self.urlbase);
+          fprintf('%s\n',url)
+          instance=jsondecode(char(webread(url))');
+          self.instance_id = instance.ID
+          file = fullfile(self.etc,'simceo.json')
+          cfg = jsondecode(fileread(file));
+          cfg.aws_instance_id = instance.ID
+          savejson('',cfg,file)
+          url = sprintf('%s/%s.json',self.urlbase,self.instance_id);
+          fprintf('%s\n',url)
+          instance=jsondecode(char(webread(url))');
+          fprintf('STATE: %s\n',instance.STATE)
+          n=1;
+          while (~strcmp(instance.STATE,'running')) && (n<=3)
+            fprintf('Probing instance state (20s wait time) ...\n')
+            pause(20)
+            instance=jsondecode(char(webread(url))');
+            n = n + 1;
+          end
+          if (~strcmp(instance.STATE,'running')) && (n>3)
+            error('Failed to start server!')
+          end
+          self.public_ip = instance.IP;
+          fprintf('\n ==>> machine is up and running @%s\n',self.public_ip)
+          %pause(2)
+          %close(h)
         end
 
         function start_instance(self)
-            cmd = sprintf(['%s ec2 start-instances --instance-ids %s',...
-                           ' --profile gmto.control'],...
-                          self.awspath,self.instance_id);
-            fprintf('%s\n',cmd)
             fprintf('@(broker)> Starting AWS machine %s...\n',self.instance_id)
-            [status,cmdout] = system(cmd);
+
+            url = sprintf('%s/simceo_aws_server.html?action=start&instance_ID=%s',self.urlbase,self.instance_id);
+            fprintf('%s\n',url)
+            [status,h] = web(url,'-new','-noaddressbox','-notoolbar');
             if status~=0
-                error('Starting AWS machine %s failed:\n%s',self.instance_id,cmdout)
+              error('Starting AWS machine %s failed:\n',self.instance_id)
             end
-            fprintf('>>>> WAITING FOR AWS INSTANCE %s TO START ... \n',self.instance_id)
-            tic
-            [status,~] = system(sprintf(['%s ec2 wait instance-running --instance-ids %s',...
-                                ' --profile gmto.control'],...
-                                        self.awspath,self.instance_id));
-            toc
-            if status~=0
-                error('Starting AWS machine %s failed!',self.instance_id')
+            pause(3)
+            url = sprintf('%s/%s.json',self.urlbase,self.instance_id);
+            fprintf('%s\n',url)
+            instance=jsondecode(char(webread(url))');
+            fprintf('STATE: %s\n',instance.STATE)
+            n=1;
+            while (~strcmp(instance.STATE,'running')) && (n<=3)
+              fprintf('Probing instance state (20s wait time) ...\n')
+              pause(20)
+              instance=jsondecode(char(webread(url))');
+              n = n + 1;
             end
-            cmd = sprintf(['%s ec2 describe-instances --instance-ids %s',...
-                           ' --output text',...  
-                           ' --query Reservations[*].Instances[*].PublicIpAddress',...
-                           ' --profile gmto.control'],...
-                          self.awspath,self.instance_id);
-            [status,public_ip_] = system(cmd);
-            if status~=0
-                error('Getting AWS machine public IP failed!')
+            if (~strcmp(instance.STATE,'running')) && (n>3)
+              error('Failed to start server!')
             end
-            self.public_ip = strtrim(public_ip_);
+            self.public_ip = instance.IP;
             fprintf('\n ==>> machine is up and running @%s\n',self.public_ip)
+            %pause(2)
+            %close(h)
         end
 
-        function terminate_instance(self)
-            if strcmp(self.instance_end_state,'terminate')
-                fprintf('@(broker)> Terminating instance %s!\n',self.instance_id)
-                [status,~] = system(sprintf(['%s ec2 %s-instances',...
-                                    ' --instance-ids %s --profile gmto.control'],...
-                                            self.awspath, self.instance_end_state,...
-                                            self.instance_id));
-                if status~=0
-                    error('Terminating AWS instance %s failed!',self.instance_id')
-                end
-            end
-        end
     end
     
     methods(Static)
@@ -173,7 +134,7 @@ classdef (Sealed=true) broker < handle
         % Launch the AWS instance 'instance_id' and returns a pointer to the broker object
             
             persistent this
-            if isempty(this)
+            if isempty(this) || ~isvalid(this)
                 fprintf('~~~~~~~~~~~~~~~~~~~')
                 fprintf('\n SIMCEO CLIENT!\n')
                 fprintf('~~~~~~~~~~~~~~~~~~~\n')
@@ -206,7 +167,7 @@ classdef (Sealed=true) broker < handle
             end    
             self.elapsedTime = self.elapsedTime + toc(tid);
         end
-
+g
         function resetZMQ()
             self = ceo.broker.getBroker();
             if self.zmqReset
