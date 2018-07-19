@@ -1,4 +1,4 @@
 {
-    "awsclipath": "/home/rconan/anaconda2/bin/aws",
+    "awsclipath": "/home/rconan/anaconda3/bin/aws",
     "aws_instance_id": "i-0bc7cd607a659573b"
 }
