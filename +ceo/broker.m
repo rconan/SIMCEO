@@ -4,11 +4,11 @@ classdef (Sealed=true) broker < handle
     %  to the CEO server
     
     properties
-        awspath % full path to the AWS CLI
-        instance_id % The AWS instance ID number
-        public_ip % The AWS instance public IP
-        zmqReset % ZMQ connection reset flag
-        elapsedTime
+      ami_id % The AWS AMI ID number
+      instance_id % The AWS instance ID number
+      public_ip % The AWS instance public IP
+      zmqReset % ZMQ connection reset flag
+            elapsedTime
     end
     
     properties (Access=private)
@@ -34,6 +34,7 @@ classdef (Sealed=true) broker < handle
             self.etc = fullfile(currentpath(1:k(end)),'..','etc');
             cfg = jsondecode(fileread(fullfile(self.etc,'simceo.json')));
             self.urlbase         = 'http://gmto.modeling.s3-website-us-west-2.amazonaws.com';
+            self.ami_id          = cfg.aws_ami_id;
             self.instance_id     = cfg.aws_instance_id;
             if isempty(self.instance_id)
                 run_instance(self)
@@ -49,23 +50,30 @@ classdef (Sealed=true) broker < handle
             zmq.core.close(self.socket);
             zmq.core.ctx_shutdown(self.ctx);
             zmq.core.ctx_term(self.ctx);
+            url = sprintf('%s/simceo_aws_server.html?action=%s&instance_ID=%s',...
+                          self.urlbase,self.instance_end_state,self.instance_id);
+            fprintf('%s\n',url)
+            [status,h] = web(url,'-browser');
+            if status~=0
+              error('Shutting down AWS machine %s failed:\n',self.instance_id)
+            end
         end
 
         function run_instance(self)
           url = sprintf("%s/simceo_aws_server.html?action=create",self.urlbase);
           fprintf('%s\n',url)
-          [status,h] = web(url,'-new','-noaddressbox','-notoolbar');
+          [status,h] = web(url,'-browser');
           if status~=0
             error('Creating machine failed:\n')
           end
           pause(20)
-          url = sprintf('%s/ami-7e34791e.json',self.urlbase);
+          url = sprintf('%s/%s.json',self.urlbase,self.ami_id);
           fprintf('%s\n',url)
           instance=jsondecode(char(webread(url))');
-          self.instance_id = instance.ID
-          file = fullfile(self.etc,'simceo.json')
+          self.instance_id = instance.ID;
+          file = fullfile(self.etc,'simceo.json');
           cfg = jsondecode(fileread(file));
-          cfg.aws_instance_id = instance.ID
+          cfg.aws_instance_id = instance.ID;
           savejson('',cfg,file)
           url = sprintf('%s/%s.json',self.urlbase,self.instance_id);
           fprintf('%s\n',url)
@@ -92,7 +100,7 @@ classdef (Sealed=true) broker < handle
 
             url = sprintf('%s/simceo_aws_server.html?action=start&instance_ID=%s',self.urlbase,self.instance_id);
             fprintf('%s\n',url)
-            [status,h] = web(url,'-new','-noaddressbox','-notoolbar');
+            [status,h] = web(url,'-browser');
             if status~=0
               error('Starting AWS machine %s failed:\n',self.instance_id)
             end
@@ -171,15 +179,6 @@ g
         function resetZMQ()
             self = ceo.broker.getBroker();
             if self.zmqReset
-                [~,aws_instance_state] = system(...
-                    sprintf(['%s ec2 describe-instances --instance-ids %s',...
-                             ' --output text',...
-                             ' --query Reservations[*].Instances[*].State.Name ',...
-                             '--profile gmto.control'],...
-                    self.awspath, self.instance_id));
-                if any(strcmp(strtrim(aws_instance_state),{'shutting-down','terminated'}))
-                    run_instance(self)
-                end
                 zmq.core.close(self.socket);
                 self.socket = zmq.core.socket(self.ctx, 'ZMQ_REQ');
                 status = zmq.core.setsockopt(self.socket,'ZMQ_RCVTIMEO',60e3);

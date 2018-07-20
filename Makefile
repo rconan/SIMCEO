@@ -21,6 +21,10 @@ server: simceo.nw
 	$(TANGLE) -RCEO.sh simceo.nw > etc/.CEO.sh
 	make -C etc/ all
 
+publish:
+	aws s3 cp etc/startstop.js s3://gmto.modeling/
+	aws s3 cp etc/simceo_aws_server.html s3://gmto.modeling/
+
 doc: simceo.nw simceo.tex
 	make -C doc/ all
 
