@@ -61,7 +61,7 @@ elseif strcmp(fname,'Z')
     data = [];
     return
 else
-   error('input file does not exist');
+   error(sprintf('input file (%s) does not exist'))
 end
 
 pos = 1; len = length(string); inStr = string;

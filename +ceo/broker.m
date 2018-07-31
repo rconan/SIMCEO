@@ -36,12 +36,15 @@ classdef (Sealed=true) broker < handle
             self.urlbase         = 'http://gmto.modeling.s3-website-us-west-2.amazonaws.com';
             self.ami_id          = cfg.aws_ami_id;
             self.instance_id     = cfg.aws_instance_id;
-            if isempty(self.instance_id)
-                run_instance(self)
-                self.instance_end_state = 'terminate';
-            else
-                start_instance(self)
-                self.instance_end_state = 'stop';
+            self.public_ip       = cfg.public_ip;
+            if isempty(self.public_ip)
+                if isempty(self.instance_id)
+                  run_instance(self)
+                  self.instance_end_state = 'terminate';
+                else
+                  start_instance(self)
+                  self.instance_end_state = 'stop';
+                end
             end
         end
 
@@ -50,12 +53,14 @@ classdef (Sealed=true) broker < handle
             zmq.core.close(self.socket);
             zmq.core.ctx_shutdown(self.ctx);
             zmq.core.ctx_term(self.ctx);
-            url = sprintf('%s/simceo_aws_server.html?action=%s&instance_ID=%s',...
-                          self.urlbase,self.instance_end_state,self.instance_id);
-            fprintf('%s\n',url)
-            [status,h] = web(url,'-browser');
-            if status~=0
-              error('Shutting down AWS machine %s failed:\n',self.instance_id)
+            if ~isempty(self.instance_end_state)
+              url = sprintf('%s/simceo_aws_server.html?action=%s&instance_ID=%s',...
+                               self.urlbase,self.instance_end_state,self.instance_id);
+              fprintf('%s\n',url)
+              [status,h] = web(url,'-browser');
+              if status~=0
+                 error('Shutting down AWS machine %s failed:\n',self.instance_id)
+              end
             end
         end
 
@@ -74,7 +79,7 @@ classdef (Sealed=true) broker < handle
           file = fullfile(self.etc,'simceo.json');
           cfg = jsondecode(fileread(file));
           cfg.aws_instance_id = instance.ID;
-          savejson('',cfg,file)
+          savejson('',cfg,file);
           url = sprintf('%s/%s.json',self.urlbase,self.instance_id);
           fprintf('%s\n',url)
           instance=jsondecode(char(webread(url))');

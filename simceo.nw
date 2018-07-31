@@ -113,8 +113,8 @@ class Timer(object):
 
     def __exit__(self, type, value, traceback):
         if self.name:
-            print '[%s]' % self.name,
-        print 'Elapsed time: %s' % (time.time() - self.tstart)
+            print('[%s]' % self.name)
+        print('Elapsed time: %s' % (time.time() - self.tstart))
 
 <<CalibrationMatrix>>
 
@@ -128,9 +128,9 @@ class Timer(object):
 
 if __name__ == "__main__":
 
-    print "*********************************"
-    print "**   STARTING SIMCEO SERVER    **"
-    print "*********************************"
+    print("*********************************")
+    print("**   STARTING SIMCEO SERVER    **")
+    print("*********************************")
     agent = broker()
     agent.start()
  
@@ -194,8 +194,8 @@ msg = self.socket.recv()
 try:
     jmsg = ubjson.loadb(msg)
 except Exception as E:
-    #print "Error raised by ubjson.loadb by that does not stop us!"
-    print msg
+    #print("Error raised by ubjson.loadb by that does not stop us!")
+    print(msg)
     raise
 @
 The message received from the S--function contains
@@ -219,10 +219,10 @@ try:
     #tid.toc()
     #print "%s->%s: %.2f"%(class_id,method_id,tid.elapsedTime) 
 except Exception as E:
-    print "@(broker)> The server has failed!"
-    print jmsg
+    print("@(broker)> The server has failed!")
+    print(jmsg)
     traceback.print_exc()
-    print "@(broker)> Recovering gracefully..."
+    print("@(broker)> Recovering gracefully...")
     class_id = ""
     args_out = "The server has failed!"
 @ 
@@ -328,7 +328,7 @@ The message that triggers the call to the \emph{Start} method is
 <<SGMT>>=
     def Start(self,mirror=None,mirror_args=None):
         self.gmt[mirror] = getattr(ceo,"GMT_"+mirror)( **mirror_args )
-        return "GMT"
+        return b"GMT"
 @
 
 \paragraph{Update}
@@ -387,7 +387,7 @@ class SAtmosphere(Sfunction):
 
     def Start(self, **kwargs):
         self.atm = ceo.JGmtAtmosphere( **kwargs )
-        return "ATM"
+        return b"ATM"
 
     def Terminate(self, args=None):
         self.atm = None
@@ -460,9 +460,9 @@ The message that triggers the call to the \emph{Start} method is
             self.sensor.reset()
             self.comm_matrix = {}
 
-            self.src>>filter(None,(self.gmt,self.sensor))
+            self.src>>tuple(filter(None,(self.gmt,self.sensor)))
 
-        return "OP"+str(self.idx)
+        return b"OP"+str(self.idx).encode()
 @ %def src propagateThroughAtm exposure_start exposure_time
 \paragraph{Terminate}
 
@@ -657,14 +657,14 @@ The message that triggers a call to the \emph{InitializeConditions} method is
 <<SOpticalPath>>=
     def InitializeConditions(self, calibrations=None, filename=None,
                              pseudo_inverse=None):
-        print "@(SOpticalPath:InitializeConditions)>"
+        print("@(SOpticalPath:InitializeConditions)>")
         if calibrations is not None:
             if filename is not None:
                 filepath = os.path.join(SIMCEOPATH,"calibration_dbs",filename)
                 db = shelve.open(filepath)
                 
                 if os.path.isfile(filepath+".dir"):
-                    print " . Loading command matrix from existing database %s!"%filename
+                    print(" . Loading command matrix from existing database %s!"%filename)
                     for key in db:
                         C = db[key]
                         #C.nThreshold = [SVD_truncation[k]]
@@ -713,7 +713,7 @@ The message that triggers a call to the \emph{InitializeConditions} method is
 
 
             if filename is not None:
-                print " . Saving command matrix to database %s!"%filename
+                print(" . Saving command matrix to database %s!"%filename)
                 db[str(key)] = C
                 db.close()
 @ 
@@ -739,7 +739,7 @@ class CalibrationMatrix(object):
     def __init__(self, D, n, 
                  decoupled=True, flux_filter2=None,
                  n_mode = None):
-        print "@(CalibrationMatrix)> Computing the SVD and the pseudo-inverse..."
+        print("@(CalibrationMatrix)> Computing the SVD and the pseudo-inverse...")
         self._n = n
         self.decoupled = decoupled
         if self.decoupled:
@@ -771,7 +771,7 @@ class CalibrationMatrix(object):
 
             # Each calibration matrix is reduced to the valid lenslet:
             D_sr = [ D_s[k][self.VLs[k].ravel(),:] for k in range(self.nSeg) ]
-            print [ D_sr[k].shape for k in range(self.nSeg)]
+            print([ D_sr[k].shape for k in range(self.nSeg)])
             # Computing the SVD for each segment:
             self.UsVT = [LA.svd(X,full_matrices=False) for X in D_sr]
 
@@ -799,7 +799,7 @@ class CalibrationMatrix(object):
         return self._n
     @nThreshold.setter
     def nThreshold(self, value):
-        print "@(CalibrationMatrix)> Updating the pseudo-inverse..."
+        print("@(CalibrationMatrix)> Updating the pseudo-inverse...")
         self._n = value
         if self.decoupled:
             self.M = [ self.__recon__(k) for k in range(self.nSeg) ]
@@ -916,17 +916,20 @@ function self = broker(varargin)
     self.urlbase         = 'http://gmto.modeling.s3-website-us-west-2.amazonaws.com';
     self.ami_id          = cfg.aws_ami_id;
     self.instance_id     = cfg.aws_instance_id;
+    self.public_ip       = cfg.public_ip;
     <<broker client: AWS instance launch>>
 end
 @ %def instance_id awspath etc self.elapsedTime zmqReset 
 If no instance ID is given, a new machine is launched based on a given AWS AMI.
 <<broker client: AWS instance launch>>=
-if isempty(self.instance_id)
-    run_instance(self)
-    self.instance_end_state = 'terminate';
-else
-    start_instance(self)
-    self.instance_end_state = 'stop';
+if isempty(self.public_ip)
+    if isempty(self.instance_id)
+      run_instance(self)
+      self.instance_end_state = 'terminate';
+    else
+      start_instance(self)
+      self.instance_end_state = 'stop';
+    end
 end
 @ %def instance_end_state 
 \subsubsection{run\_instance}
@@ -1104,12 +1107,14 @@ function delete(self)
     zmq.core.close(self.socket);
     zmq.core.ctx_shutdown(self.ctx);
     zmq.core.ctx_term(self.ctx);
-    url = sprintf('%s/simceo_aws_server.html?action=%s&instance_ID=%s',...
-                  self.urlbase,self.instance_end_state,self.instance_id);
-    fprintf('%s\n',url)
-    [status,h] = web(url,'-browser');
-    if status~=0
-      error('Shutting down AWS machine %s failed:\n',self.instance_id)
+    if ~isempty(self.instance_end_state)
+      url = sprintf('%s/simceo_aws_server.html?action=%s&instance_ID=%s',...
+                       self.urlbase,self.instance_end_state,self.instance_id);
+      fprintf('%s\n',url)
+      [status,h] = web(url,'-browser');
+      if status~=0
+         error('Shutting down AWS machine %s failed:\n',self.instance_id)
+      end
     end
 end
 @
