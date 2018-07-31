@@ -302,8 +302,9 @@ class SGMT(Sfunction):
         self.gmt  = ceo.GMT_MX()
 
     def Terminate(self, args=None):
+        print("\n@(SGMT:Terminate)>")
         self.gmt = ceo.GMT_MX()
-        return "GMT deleted!"
+        return b"GMT deleted!"
 @
 
 \paragraph{Start}
@@ -327,6 +328,7 @@ The message that triggers the call to the \emph{Start} method is
 @
 <<SGMT>>=
     def Start(self,mirror=None,mirror_args=None):
+        print("\n@(SGMT:Start)>")
         self.gmt[mirror] = getattr(ceo,"GMT_"+mirror)( **mirror_args )
         return b"GMT"
 @
@@ -386,12 +388,14 @@ class SAtmosphere(Sfunction):
         self.atm = None
 
     def Start(self, **kwargs):
+        print("\n@(SAtmosphere:Start)>")
         self.atm = ceo.JGmtAtmosphere( **kwargs )
         return b"ATM"
 
     def Terminate(self, args=None):
+        print("\n@(SAtmosphere:Terminate)>")
         self.atm = None
-        return "Atmosphere deleted!"
+        return b"Atmosphere deleted!"
 
     def InitializeConditions(self, args=None):
         pass
@@ -437,6 +441,7 @@ The message that triggers the call to the \emph{Start} method is
 <<SOpticalPath>>=
     def Start(self,source_args=None, sensor_class=None, sensor_args=None, 
               calibration_source_args=None, miscellaneous_args=None):
+        print("\n@(SOpticalPath:Start)>")
         
         #self.propagateThroughAtm = miscellaneous_args['propagate_through_atmosphere']
         self.src = ceo.Source( **source_args )
@@ -464,6 +469,7 @@ The message that triggers the call to the \emph{Start} method is
 
         return b"OP"+str(self.idx).encode()
 @ %def src propagateThroughAtm exposure_start exposure_time
+
 \paragraph{Terminate}
 
 The message that triggers the call to the \emph{Terminate} method is
@@ -479,7 +485,8 @@ The message that triggers the call to the \emph{Terminate} method is
 @ 
 <<SOpticalPath>>=
     def Terminate(self, args=None):
-        return "OpticalPath deleted!"
+        print("\n@(SOpticalPath:Terminate)>")
+        return b"OpticalPath deleted!"
 @
 \paragraph{Update}
 
