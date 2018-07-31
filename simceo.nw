@@ -442,9 +442,12 @@ The message that triggers the call to the \emph{Start} method is
     def Start(self,source_args=None, sensor_class=None, sensor_args=None, 
               calibration_source_args=None, miscellaneous_args=None):
         print("\n@(SOpticalPath:Start)>")
-        
+        self.pssn_data = None
         #self.propagateThroughAtm = miscellaneous_args['propagate_through_atmosphere']
         self.src = ceo.Source( **source_args )
+        self.src.reset()
+        self.gmt.reset()
+        self.gmt.propagate(self.src)
         
         if sensor_class is not None:
 
@@ -454,9 +457,6 @@ The message that triggers the call to the \emph{Start} method is
             else:
                 self.calib_src = ceo.Source( **calibration_source_args )
 	
-	    self.src.reset()
-	    self.gmt.reset()
-            self.gmt.propagate(self.src)
             self.sensor.reset()
             self.sensor.calibrate(self.src,0)
 	    #self.sensor.calibrate(self.calib_src, sensor_args['intensityThreshold'])
@@ -465,7 +465,7 @@ The message that triggers the call to the \emph{Start} method is
             self.sensor.reset()
             self.comm_matrix = {}
 
-            self.src>>tuple(filter(None,(self.gmt,self.sensor)))
+        self.src>>tuple(filter(None,(self.gmt,self.sensor)))
 
         return b"OP"+str(self.idx).encode()
 @ %def src propagateThroughAtm exposure_start exposure_time
@@ -563,6 +563,12 @@ and the dictionnary implementation is
         elif key=="ee80":
             #print "EE80=%.3f or %.3f"%(self.sensor.ee80(from_ghost=False),self.sensor.ee80(from_ghost=True))
             return self.sensor.ee80(from_ghost=False).tolist()
+        elif key=="PSSn":
+            if self.pssn_data is None:
+                pssn , self.pssn_data = self.gmt.PSSn(self.src,save=True)
+            else:
+                pssn = self.gmt.PSSn(self.src,**self.pssn_data)
+            return pssn
         else:
             c = self.comm_matrix[key].dot( self.sensor.Data ).reshape(1,-1)
             return c.tolist()
