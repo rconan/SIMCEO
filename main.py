@@ -18,8 +18,11 @@ agent.start()
 
 doc = curdoc()
 
+## TIME
+time = Div(text="""<h2>Time: 0.0s</h2>""")
+
 ## INFO
-info = Div(text="""<h2>Time: 0.0s</h2>""")
+info = Div(text="""<ul><li>WFE RMS: nm</li></ul>""")
 
 ## OPS
 select = Select(title="Optical Path:", value="", options=[""])
@@ -34,7 +37,7 @@ def cb_refresh():
 refresh.on_click(cb_refresh)
 
 ## STREAM
-stream = Toggle(label='STREAM',button_type="default",active=False)
+stream = Toggle(label='STREAM',button_type="success",active=False)
 
 ## PUPIL PLANE WAVEFRONT
 NPX = 512
@@ -49,10 +52,11 @@ ppw.image('W',source=W, x=-L/2, y=-L/2, dw=L ,dh=L, color_mapper=cmpr)
 def update():
     #print("update")
     if agent.ops:
-        info.text="""<h2>Time: {0:.3f}s</h2>""".format(agent.currentTime)
+        time.text = """<h2>Time: {0:.3f}s</h2>""".format(agent.currentTime)
         op = agent.ops[select.options.index(select.value)]
         #print(op.src.wavefront.rms(-9))
         W.data.update(dict(W=[op.src.phase.host(units='nm')]))
+        info.text = """<ul><li>WFE RMS: {0:.0f}nm</li></ul>""".format(op.src.wavefront.rms(-9)[0])
     else:
         stream.active = False
         select.options = [""]
@@ -65,9 +69,11 @@ def cb_stream(attrname, old, new):
     if new:
         print('Add callback')
         callback_id = doc.add_periodic_callback(update,2000)
+        stream.button_type = 'warning'
     else:
         print('Remove callback')
         doc.remove_periodic_callback(callback_id)
+        stream.button_type = 'success'
 stream.on_change('active',cb_stream)
 
-doc.add_root(row(widgetbox([info,refresh,select,stream]),ppw))
+doc.add_root(row(widgetbox([time,refresh,select,info,stream]),ppw))
