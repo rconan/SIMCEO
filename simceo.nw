@@ -189,9 +189,10 @@ def run(self):
 @ 
 waits for a request from a Simulink S--function:
 <<broker run details>>=
-msg = self.socket.recv()
 #jmsg = ubjson.loadb(msg)
+msg = ''
 try:
+    msg = self.socket.recv()
     jmsg = ubjson.loadb(msg)
 except Exception as E:
     #print("Error raised by ubjson.loadb by that does not stop us!")
@@ -224,7 +225,7 @@ except Exception as E:
     traceback.print_exc()
     print("@(broker)> Recovering gracefully...")
     class_id = ""
-    args_out = "The server has failed!"
+    args_out = b"The server has failed!"
 @ 
 The dictionary--like call is implemented with 
 <<broker get item>>=
@@ -361,7 +362,7 @@ The message that triggers the call to the \emph{Update} method is
                 self.gmt[mirror].motion_CS.euler_angles[:] = data[:,3:]
                 self.gmt[mirror].motion_CS.update()
             elif key=="mode_coefs":
-                self.gmt[mirror].modes.a = np.copy( data, order='C')
+                self.gmt[mirror].modes.a[:] = data
                 self.gmt[mirror].modes.update()
 @
 \paragraph{InitializeConditions}
@@ -449,7 +450,7 @@ The message that triggers the call to the \emph{Start} method is
         self.gmt.reset()
         self.gmt.propagate(self.src)
         
-        if sensor_class is not None:
+        if not (sensor_class is None or sensor_class=='None'):
 
             self.sensor = getattr(ceo,sensor_class)( **sensor_args )
             if calibration_source_args is None:
