@@ -95,7 +95,6 @@ import traceback
 import scipy.linalg as LA
 
 SIMCEOPATH = os.path.abspath(os.path.dirname(__file__))
-currentTime = 0.0;
 
 class testComm:
     def __init__(self):
@@ -163,6 +162,7 @@ class broker(threading.Thread):
         
         self.ops = []
         self.n_op = 0
+        self.currentTime = 0.0
         self.satm = SAtmosphere(self.ops)
         self.sgmt = SGMT(self.ops, self.satm)
 
@@ -208,8 +208,7 @@ The message received from the S--function contains
 \end{itemize}
 The class method is invoked with:
 <<broker run details>>=
-global currentTime
-currentTime = float( jmsg["currentTime"][0][0] )
+self.currentTime = float( jmsg["currentTime"][0][0] )
 class_id  = jmsg["class_id"]
 method_id = jmsg["method_id"]
 #print "@ %.3fs: %s->%s"%(currentTime,jmsg["tag"],method_id)
@@ -449,6 +448,7 @@ The message that triggers the call to the \emph{Start} method is
         self.src.reset()
         self.gmt.reset()
         self.gmt.propagate(self.src)
+        self.sensor_class = sensor_class
         
         if not (sensor_class is None or sensor_class=='None'):
 
