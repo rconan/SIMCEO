@@ -93,6 +93,7 @@ import os
 import shelve
 import traceback
 import scipy.linalg as LA
+import M1 as MDL
 
 SIMCEOPATH = os.path.abspath(os.path.dirname(__file__))
 
@@ -300,6 +301,7 @@ class SGMT(Sfunction):
 
     def __init__(self, ops, satm):
         self.gmt  = ceo.GMT_MX()
+        self.M1 = None
 
     def Terminate(self, args=None):
         print("\n@(SGMT:Terminate)>")
@@ -329,7 +331,19 @@ The message that triggers the call to the \emph{Start} method is
 <<SGMT>>=
     def Start(self,mirror=None,mirror_args=None):
         print("\n@(SGMT:Start)>")
-        self.gmt[mirror] = getattr(ceo,"GMT_"+mirror)( **mirror_args )
+        print(mirror_args)
+        if mirror_args['mirror_model_args'] is None:
+            self.gmt[mirror] = getattr(ceo,"GMT_"+mirror)( **mirror_args )
+        else:
+            self.M1 = MDL.Mirror(**mirror_args['mirror_model_args'])
+            (self.outer_xy,datatri) = MDL.FEM.nodes_coordinates(1)
+            (self.center_xy,datatri) = MDL.FEM.nodes_coordinates(7)
+            M1_S = self.M1.deltaSplitS
+            S = ceo.mapping.cat(ceo.Mapping(self.outer_xy,np.hstack(M1_S[:-1]))(201,8.5),
+                                ceo.Mapping(self.center_xy,M1_S[-1])(201,8.5),list(range(7)))
+            self.gmt[mirror] = ceo.GMT_M1(mirror_modes=u'truptiBM',N_MODE=1,mirror_modes_data=S.data)
+            self.gmt[mirror].modes.a[:] = np.ones((7,1))
+            self.gmt[mirror].modes.update()
         return b"GMT"
 @
 
@@ -361,8 +375,18 @@ The message that triggers the call to the \emph{Update} method is
                 self.gmt[mirror].motion_CS.euler_angles[:] = data[:,3:]
                 self.gmt[mirror].motion_CS.update()
             elif key=="mode_coefs":
-                self.gmt[mirror].modes.a[:] = data
-                self.gmt[mirror].modes.update()
+                if mirror=='M1' and self.M1 is not None :
+                    self.gmt[mirror].modes.a[:] = np.ones((7,1))
+                    self.gmt[mirror].modes.update()
+                    self.M1.reset()
+                    self.M1.bmCoefs = data
+                    M1_S = self.M1.deltaSplitS
+                    S = ceo.mapping.cat(ceo.Mapping(self.outer_xy,np.hstack(M1_S[:-1]))(201,8.5),
+                                            ceo.Mapping(self.center_xy,M1_S[-1])(201,8.5),list(range(7)))
+                    self.gmt[mirror].modes.modes = S.data['M']
+                else:
+                    self.gmt[mirror].modes.a[:] = data
+                    self.gmt[mirror].modes.update()
 @
 \paragraph{InitializeConditions}
 
@@ -459,8 +483,7 @@ The message that triggers the call to the \emph{Start} method is
                 self.calib_src = ceo.Source( **calibration_source_args )
 	
             self.sensor.reset()
-            self.sensor.calibrate(self.src,0)
-	    #self.sensor.calibrate(self.calib_src, sensor_args['intensityThreshold'])
+            self.sensor.calibrate(self.calib_src, sensor_args['intensityThreshold'])
             #print "intensity_threshold: %f"%sensor_args['intensityThreshold']
 
             self.sensor.reset()
