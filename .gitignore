@@ -16,3 +16,14 @@ slprj
 etc/gmto*
 sandbox
 *.npy
+*.r2017a
+*.el
+*.npz
+*.bak
+*.dir
+*.dat
+*.r2016a
+*.png
+*.svg
+/M1
+*.zip

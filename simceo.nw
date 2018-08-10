@@ -370,23 +370,37 @@ The message that triggers the call to the \emph{Update} method is
         for key in inputs_args:
             data = np.array( inputs_args[key], order='C', dtype=np.float64 )
             data = np.transpose( np.reshape( data , (-1,7) ) )
-            if key=="TxyzRxyz":
-                self.gmt[mirror].motion_CS.origin[:]       = data[:,:3]
-                self.gmt[mirror].motion_CS.euler_angles[:] = data[:,3:]
-                self.gmt[mirror].motion_CS.update()
-            elif key=="mode_coefs":
-                if mirror=='M1' and self.M1 is not None :
-                    self.gmt[mirror].modes.a[:] = np.ones((7,1))
-                    self.gmt[mirror].modes.update()
-                    self.M1.reset()
-                    self.M1.bmCoefs = data
+            if mirror=='M1' and self.M1 is not None :
+                if key=="TxyzRxyz":
+                    delta_Txyz = data[:,:3] - self.gmt[mirror].motion_CS.origin[:]
+                    delta_Rxyz = data[:,3:] - self.gmt[mirror].motion_CS.euler_angles[:]
+                    self.gmt[mirror].motion_CS.origin[:]       = data[:,:3]
+                    self.gmt[mirror].motion_CS.euler_angles[:] = data[:,3:]
+                    self.gmt[mirror].motion_CS.update()
+
+                    self.M1.motion(Txyz=delta_Txyz,Rxyz=delta_Rxyz)
                     M1_S = self.M1.deltaSplitS
                     S = ceo.mapping.cat(ceo.Mapping(self.outer_xy,np.hstack(M1_S[:-1]))(201,8.5),
-                                            ceo.Mapping(self.center_xy,M1_S[-1])(201,8.5),list(range(7)))
+                                        ceo.Mapping(self.center_xy,M1_S[-1])(201,8.5),list(range(7)))
                     self.gmt[mirror].modes.modes = S.data['M']
-                else:
-                    self.gmt[mirror].modes.a[:] = data
+                if key=="mode_coefs":
+                    self.gmt[mirror].modes.a[:] = np.ones((7,1))
                     self.gmt[mirror].modes.update()
+                    self.M1.reset(force_only=True,stray_weight=False,stray_friction=False)
+                    self.M1.bmCoefs = data
+                    M1_S = self.M1.deltaSplitS
+                    S = ceo.mapping.cat(ceo.Mapping(self.outer_xy,np.hstack(M1_S[:-1]),method='Nearest')(201,8.5),
+                                                ceo.Mapping(self.center_xy,M1_S[-1],method='Nearest')(201,8.5),list(range(7)))
+                    self.gmt[mirror].modes.modes = S.data['M']
+            else:
+                print('NOT HERE')
+                if key=="TxyzRxyz":
+                    self.gmt[mirror].motion_CS.origin[:]       = data[:,:3]
+                    self.gmt[mirror].motion_CS.euler_angles[:] = data[:,3:]
+                    self.gmt[mirror].motion_CS.update()
+                elif key=="mode_coefs":
+                        self.gmt[mirror].modes.a[:] = data
+                        self.gmt[mirror].modes.update()
 @
 \paragraph{InitializeConditions}
 
