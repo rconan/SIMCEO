@@ -93,7 +93,9 @@ import os
 import shelve
 import traceback
 import scipy.linalg as LA
-import M1 as MDL
+import pickle
+import zlib
+#import M1 as MDL
 
 SIMCEOPATH = os.path.abspath(os.path.dirname(__file__))
 
@@ -160,6 +162,8 @@ class broker(threading.Thread):
         self.socket = self.context.socket(zmq.REP)
         self.address = "tcp://*:3650"
         self.socket.bind(self.address)
+        print(self._recv_())
+        self._send_("Acknowledging connection to SIMCEO server!")
         
         self.ops = []
         self.n_op = 0
@@ -175,6 +179,16 @@ class broker(threading.Thread):
 
         self.socket.close()
         self.context.term()
+
+    def _send_(self,obj,protocol=-1,flags=0):
+        pobj = pickle.dumps(obj,protocol)
+        zobj = zlib.compress(pobj)
+        self.socket.send(zobj, flags=flags)
+
+    def _recv_(self,flags=0):
+        zobj = self.socket.recv(flags)
+        pobj = zlib.decompress(zobj)
+        return pickle.loads(pobj)
 
     <<broker get item>>
 
@@ -888,6 +902,271 @@ class Sensor:
     def process(self):
         pass
 @ 
+
+
+\section{DOS}
+\label{sec:DOS}
+
+[[dos]] is the interface to the dynamic optical simulation.
+A [[dos]] simulation is defined with a parameter file [[dos.yaml]].
+[[dos.yaml]] is divided into several sections.
+<<dos.yaml>>=
+<<dos simulation section>>
+<<dos drivers section>>
+@
+The first section is [[simulation]] where the simulation sampling frequency and
+duration is given as well as the address of the SIMCEO server.
+<<dos simulation section>>=
+simulation:
+  sampling frequency: 100 # [Hertz]
+  duration: 1 # [seconds]
+  simceo server:
+    IP: 127.0.0.1
+@
+
+The [[DOS]] class acts as the simulation conductor.
+It is initialized with the path to the directory where the configuration and
+parameter files reside.
+<<dos imports>>=
+import os
+import yaml
+import logging
+import threading
+<<dos.py>>=
+<<dos imports>>
+
+logging.basicConfig(level=logging.DEBUG)
+
+class DOS(threading.Thread):
+    def __init__(self,path_to_config_dir):
+        threading.Thread.__init__(self)
+        self.logger = logging.getLogger(self.__class__.__name__)
+        cfg_file = os.path.join(path_to_config_dir,'dos.yaml')
+        self.logger.info('Reading config from %s',cfg_file)
+        with open(cfg_file) as f:
+            self.cfg = yaml.load(f)
+        self.N_SAMPLE = int(self.cfg['simulation']['sampling frequency']*
+                            self.cfg['simulation']['duration'])
+        <<check parameter file existence>>
+        <<starting the drivers>>
+        <<initializing the drivers>>
+    <<running the loop>>
+@
+Each device must have a corresponding parameter file in the same directory than
+the configuration file.
+<<check parameter file existence>>=
+self.drivers = {}
+for d,v in self.cfg['drivers'].items():
+    prm_file = os.path.join(path_to_config_dir,d+'.yaml')
+    if os.path.isfile(prm_file):
+        self.logger.info('New driver: %s',d)
+        self.drivers[d] = Driver(d,**v)
+    else:
+        self.logger.warning('%s is missing!',prm_file)
+@
+For an optical sensor, the [[device name.yaml]] file has 3 sections: source,
+sensor and calibrations.
+Each section list the arguments of CEO methods.
+<<device name.yaml>>=
+source:
+  photometric_band: R+I
+  zenith:
+    value: 8
+    units: arcmin
+  azimuth:
+    value: 66
+    units: degree
+  magnitude: 0
+  rays_box_size: 25.5000
+  rays_box_sampling: 769
+  rays_origin: [0,0,25]
+sensor:
+  class: GeometricShackHartmann
+  args:
+    N_SIDE_LENSLET: 20
+  calibrate args: null
+calibrations:
+  M2TT:
+    method_id: calibrate
+    args:
+      mirror: M2
+      mode: segment tip-tilt
+      stroke: 1e-6
+@
+Once the parameters are loaded, we call the drivers [[start]]
+<<starting the drivers>>=
+[x.start() for x in self.drivers.values()]
+@
+and [[init]] methods:
+<<initializing the drivers>>=
+[x.init() for x in self.drivers.values()]
+@
+Then the [[update]] and [[output]] method are called successively for the total
+[[duration]] of the simulation.
+The method are called in a separate thread allowing to monitor the simulation as
+it progress.
+<<running the loop>>=
+def run(self):
+    for l in range(self.N_SAMPLE):
+        self.logger.debug('Step #%d',l)
+        [x.update(l) for x in self.drivers.values()]
+        [x.output(l) for x in self.drivers.values()]
+@
+
+\subsection{DOS driver}
+\label{sec:dos-driver}
+   
+The next section is the [[drivers]] section.
+This section lists all the devices that makes the simulation.
+There is a many subsections as drivers.
+A [[drivers]] has a unique name [[device name]] that must be matched by a
+parameter file of the same name [[device name]].yaml.
+An object is associated to each device.
+The object have the following methods: [[start]],[[init]],[[update]],[[output]]
+and [[terminate]].
+Each device execute first the [[start]] method followed by the [[init]] method.
+Then after [[delay]] samples, the [[update]] method is called at the given
+[[sampling rate]] reading its inputs.
+Each device inputs is defined by a name and has for properties either a size or
+a list with the origin device and origin device output name.
+The [[update]] method is followed by the [[output]] method
+Each device outputs is defined by a name and has for properties a given sampling frequency and either a size or a list with the input destination device and destination device input name.
+<<dos drivers section>>=
+drivers:
+  device name:
+    delay: 2 # [sample]
+    sampling rate: 5 # [sample]
+    inputs:
+      input name:
+        size: 0
+        origin: [device, device output name]
+    outputs:
+      output name:
+        sampling rate: 10 # [sample]
+        size: 0
+        destination: [device, device input name]
+@
+The [[drivers]] method are defined in the [[Driver]] class.
+<<Driver methods>>=
+def start(self):
+    self.logger.debug('Starting!')
+def init(self):
+    self.logger.debug('Initializing!')
+def update(self,step):
+    if step>self.delay and step%self.sampling_rate==0:
+        self.logger.debug('Updating!')
+def output(self,step):
+    if step>self.delay:
+        for k,v in self.outputs.items():
+            if step%v.sampling_rate==0:
+                self.logger.debug('Outputing %s!',k)
+def terminate(self):
+    self.logger.debug('Terminating!')
+@
+Inputs and outputs are saved as dictionaries with the input and output names as
+keys and the values being an instance of the [[Inputs]] and [[Outputs]] classes.
+<<IO>>=
+class IO:
+    def __init__(self,size=0,**kwargs):
+        self.size = size
+<<Inputs>>=
+class Input(IO):
+    def __init__(self,size=0,origin=None):
+        IO.__init__(self,size)
+        self.origin = origin
+@
+and [[Outputs]] classes.
+<<Outputs>>=
+class Output(IO):
+    def __init__(self,**kwargs):
+        IO.__init__(self,**kwargs)
+        self.sampling_rate = kwargs['sampling rate']
+        self.destination = kwargs['destination']
+@
+<<dos.py>>=
+<<IO>>
+<<Inputs>>
+<<Outputs>>
+class Driver:
+    def __init__(self,tag,**kwargs):
+        self.logger = logging.getLogger(tag)
+        self.delay         = kwargs['delay']
+        self.sampling_rate = kwargs['sampling rate']
+        self.inputs        = {}
+        for k,v in kwargs['inputs'].items():
+            self.logger.info('New input: %s',k)
+            self.inputs[k] = Input(**v)
+        self.outputs       = {}
+        for k,v in kwargs['outputs'].items():
+            self.logger.info('New output: %s',k)
+            self.outputs[k] = Output(**v)
+
+    <<Driver methods>>
+@
+
+\section{The python client}
+\label{sec:python-client}
+
+The simulation 
+
+
+<<simceoclient.py>>=
+import zmq
+import yaml
+import os
+import pickle
+import zlib
+
+SIMCEOPATH = os.path.abspath(os.path.dirname(__file__))
+
+@
+<<simceoclient.py>>=
+class SIM:
+
+    def __init__(self):
+        with open(os.path.join(SIMCEOPATH,'etc','sim_prm.yaml')) as f:
+            cfg = yaml.load(f)
+
+        self.tau = 1/cfg['simulation']['sampling frequency']
+        self.T = cfg['simulation']['duration']
+
+        self.simceo = broker(cfg['simceo server']['IP'])
+
+@
+<<simceoclient.py>>=
+class broker:
+
+    def __init__(self,IP):
+        with open(os.path.join(SIMCEOPATH,'etc','simceo.yaml')) as f:
+            cfg = yaml.load(f)
+        self.context = zmq.Context()
+        print("@(broker)> Connecting to server...")
+        self.socket = self.context.socket(zmq.REQ)
+        self.socket.connect("tcp://{}:3650".format(IP))
+        self._send_("Acknowledging connection from SIMCEO client!")
+        print(self._recv_())
+
+    def __del__(self):
+        print('@(broker)> Disconnecting from server!')
+        self.socket.close()
+        self.context.term()
+
+    def _send_(self,obj,protocol=-1,flags=0):
+        pobj = pickle.dumps(obj,protocol)
+        zobj = zlib.compress(pobj)
+        self.socket.send(zobj, flags=flags)
+
+    def _recv_(self,flags=0):
+        zobj = self.socket.recv(flags)
+        pobj = zlib.decompress(zobj)
+        return pickle.loads(pobj)
+
+@
+<<simceoclient.py>>=
+if __name__ == "__main__":
+    #agent = broker()
+    sim = SIM()
+@
 
 \section{The ceo Matlab package}
 \label{sec:ceo-matlab-package}
