@@ -254,6 +254,7 @@ except Exception as E:
 The dictionary--like call is implemented with 
 <<broker get item>>=
 def __getitem__(self,key):
+    self.logger.debug('key: %s',key)
     if key=="GMT":
         return self.sgmt
     elif key=="ATM":
@@ -326,6 +327,7 @@ class SGMT(Sfunction):
 
     def __init__(self, ops, satm):
         self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.info('Instantiate')
         self.gmt  = ceo.GMT_MX()
 
     def Terminate(self, args=None):
@@ -354,10 +356,11 @@ The message that triggers the call to the \emph{Start} method is
 }
 @
 <<SGMT>>=
-    def Start(self,mirror=None,mirror_args=None):
+    def Start(self,mirror=None,mirror_args={}):
         self.logger.info('Start')
-        self.gmt[mirror] = getattr(ceo,"GMT_"+mirror)( **mirror_args )
-        return b"GMT"
+        if mirror_args:
+            self.gmt[mirror] = getattr(ceo,"GMT_"+mirror)( **mirror_args )
+        return "GMT"
 @
 
 \paragraph{Update}
@@ -443,6 +446,8 @@ The \emph{SOpticalClass} gathers a source object \emph{src}, the GMT model objec
 class SOpticalPath(Sfunction):
 
     def __init__(self, idx, gmt, satm):
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.info('Instantiate')
         self.idx = idx
         self.gmt = gmt
         self.satm = satm
@@ -468,7 +473,7 @@ The message that triggers the call to the \emph{Start} method is
 <<SOpticalPath>>=
     def Start(self,source_args=None, sensor_class=None, sensor_args=None, 
               calibration_source_args=None, miscellaneous_args=None):
-        print("\n@(SOpticalPath:Start)>")
+        self.logger.info('Start')
         self.pssn_data = None
         #self.propagateThroughAtm = miscellaneous_args['propagate_through_atmosphere']
         self.src = ceo.Source( **source_args )
@@ -494,7 +499,7 @@ The message that triggers the call to the \emph{Start} method is
 
         self.src>>tuple(filter(None,(self.gmt,self.sensor)))
 
-        return b"OP"+str(self.idx).encode()
+        return "OP"+str(self.idx)
 @ %def src propagateThroughAtm exposure_start exposure_time
 
 \paragraph{Terminate}
@@ -562,7 +567,7 @@ The message that triggers the call to the \emph{Outputs} method is
             for element in outputs:
                 doutputs[element] = self[element]
             self.sensor.reset()
-
+        self.logger.debug('outputs: %s',doutputs)
         return doutputs
 @ 
 and the dictionnary implementation is
@@ -695,7 +700,7 @@ The message that triggers a call to the \emph{InitializeConditions} method is
 }
 @
 <<SOpticalPath>>=
-    def InitializeConditions(self, calibrations=None, filename=None,
+    def Init(self, calibrations=None, filename=None,
                              pseudo_inverse=None):
         print("@(SOpticalPath:InitializeConditions)>")
         if calibrations is not None:
@@ -1016,14 +1021,15 @@ def associate(self,prm_file):
         self.msg['class_id'] = 'GMT'
         self.msg_args['Start'].update(prm)
         self.msg_args['Update']['mirror'] = prm['mirror']
-        self.msg_args['Update']['inputs'].update({k_i:v_i.data for k_i,v_i in self.inputs.items()})
+        self.msg_args['Update']['inputs'].update(\
+                {k_i:v_i.data for k_i,v_i in self.inputs.items()})
     else:
         self.msg['class_id'] = 'OP'
-        self.msg_args['Start'] = {'source_args':{},
-                                  'sensor_class':None,
-                                  'sensor_args':None,
-                                  'calibration_source':None,
-                                  'miscellaneous_args':None}
+        self.msg_args['Start'].update({'source_args':prm['source'],
+                                       'sensor_class':prm['sensor']['class'],
+                                       'sensor_args':None,
+                                       'calibration_source_args':None,
+                                       'miscellaneous_args':None})
         self.msg_args['Outputs']['outputs'] += [k_o for k_o in self.outputs]
 @
 Once the parameters are loaded and the drivers linked, we call the drivers [[start]]
@@ -1089,6 +1095,7 @@ def start(self):
     self.logger.debug('Starting!')
     m = 'Start'
     <<client-server exchange>>
+    self.msg['class_id'] = reply
 def init(self):
     self.logger.debug('Initializing!')
     m = 'Init'
@@ -1105,6 +1112,8 @@ def output(self,step):
                 self.logger.debug('Outputing %s!',k)
                 m = 'Outputs'
                 <<client-server exchange>>
+                for k,v in reply.items():
+                    self.outputs[k].data[...] = v
 def terminate(self):
     self.logger.debug('Terminating!')
     m = 'Terminate'
@@ -1118,7 +1127,7 @@ self.msg['args'].update(self.msg_args[m])
 self.server._send_(self.msg)
 self.msg['method_id'] = ''
 self.msg['args'].clear()
-return self.server._recv_()
+reply = self.server._recv_()
 @
 \subsubsection{Driver inputs/outputs}
 \label{sec:driver-io}
