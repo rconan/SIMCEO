@@ -55,7 +55,7 @@ A flowchart of SIMCEO is shown in Fig.~\ref{simceo-flowchart}.
 The Matlab package is written with custom blocks using a \emph{Level--2 Matlab S--function}.
 A \emph{Level--2 Matlab S--function} consists in a collection of functions that are called by the Simulink engine when a model is running.
 Inside the \emph{Level--2 Matlab S--function}, the functions \emph{Start}, \emph{Terminate} and \emph{Outputs} are used to exchange information with CEO.
-The Matlab class \emph{broker}  is responsible for starting the CEO server in the AWS cloud and for managing the communication with the server.
+The Matlab class \emph{broker}  Acknowledging connection to SIMCEO serveris responsible for starting the CEO server in the AWS cloud and for managing the communication with the server.
 
 The requests from the client are managed by the \emph{broker} class of the \emph{simulink} python module on the server.
 The \emph{simulink} module is providing three python classes to deal with Simulink requests: \emph{SGMT}, \emph{SAtmosphere} and \emph{SOpticalPath}.
@@ -95,7 +95,9 @@ import traceback
 import scipy.linalg as LA
 import pickle
 import zlib
-#import M1 as MDL
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
 
 SIMCEOPATH = os.path.abspath(os.path.dirname(__file__))
 
@@ -157,13 +159,14 @@ class broker(threading.Thread):
     def __init__(self):
 
         threading.Thread.__init__(self)
+
+        self.logger = logging.getLogger(self.__class__.__name__)
         
         self.context = zmq.Context()
         self.socket = self.context.socket(zmq.REP)
         self.address = "tcp://*:3650"
         self.socket.bind(self.address)
-        print(self._recv_())
-        self._send_("Acknowledging connection to SIMCEO server!")
+        self.loop = True
         
         self.ops = []
         self.n_op = 0
@@ -198,7 +201,7 @@ The \emph{run} method
 <<broker run>>=
 def run(self):
     
-    while True:
+    while self.loop:
 
         <<broker run details>>
 @ 
@@ -207,8 +210,11 @@ waits for a request from a Simulink S--function:
 #jmsg = ubjson.loadb(msg)
 msg = ''
 try:
-    msg = self.socket.recv()
-    jmsg = ubjson.loadb(msg)
+    self.logger.debug('Waiting for message ...')
+    #msg = self.socket.recv()
+    #jmsg = ubjson.loadb(msg)
+    msg = self._recv_()
+    self.logger.debug('Received: %s',msg)
 except Exception as E:
     #print("Error raised by ubjson.loadb by that does not stop us!")
     print(msg)
@@ -223,19 +229,23 @@ The message received from the S--function contains
 \end{itemize}
 The class method is invoked with:
 <<broker run details>>=
-self.currentTime = float( jmsg["currentTime"][0][0] )
-class_id  = jmsg["class_id"]
-method_id = jmsg["method_id"]
+#self.currentTime = float( jmsg["currentTime"][0][0] )
+if not 'class_id' in msg:
+    self._send_("SIMCEO server received: {}".format(msg))
+    continue
+class_id  = msg["class_id"]
+method_id = msg["method_id"]
+self.logger.debug('Calling out: %s.%s',class_id,method_id)
 #print "@ %.3fs: %s->%s"%(currentTime,jmsg["tag"],method_id)
 #tid = ceo.StopWatch()
 try:
     #tid.tic()
-    args_out = getattr( self[class_id], method_id )( **jmsg["args"] )
+    args_out = getattr( self[class_id], method_id )( **msg["args"] )
     #tid.toc()
     #print "%s->%s: %.2f"%(class_id,method_id,tid.elapsedTime) 
 except Exception as E:
     print("@(broker)> The server has failed!")
-    print(jmsg)
+    print(msg)
     traceback.print_exc()
     print("@(broker)> Recovering gracefully...")
     class_id = ""
@@ -273,7 +283,8 @@ if class_id[:2]=="OP" and method_id=="Terminate":
 @
 The value return by the method of the invoked object is sent back to the S--function:
 <<broker run details>>=
-self.socket.send(ubjson.dumpb(args_out,no_float32=True))
+#self.socket.send(ubjson.dumpb(args_out,no_float32=True))
+self._send_(args_out)
 @
 
 \subsection{The S classes}
@@ -314,11 +325,11 @@ The \emph{SGMT} class is the interface class between a CEO \emph{GMT\_MX} object
 class SGMT(Sfunction):
 
     def __init__(self, ops, satm):
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.gmt  = ceo.GMT_MX()
-        self.M1 = None
 
     def Terminate(self, args=None):
-        print("\n@(SGMT:Terminate)>")
+        self.logger.info('Terminate')
         self.gmt = ceo.GMT_MX()
         return b"GMT deleted!"
 @
@@ -344,20 +355,8 @@ The message that triggers the call to the \emph{Start} method is
 @
 <<SGMT>>=
     def Start(self,mirror=None,mirror_args=None):
-        print("\n@(SGMT:Start)>")
-        print(mirror_args)
-        if mirror_args['mirror_model_args'] is None:
-            self.gmt[mirror] = getattr(ceo,"GMT_"+mirror)( **mirror_args )
-        else:
-            self.M1 = MDL.Mirror(**mirror_args['mirror_model_args'])
-            (self.outer_xy,datatri) = MDL.FEM.nodes_coordinates(1)
-            (self.center_xy,datatri) = MDL.FEM.nodes_coordinates(7)
-            M1_S = self.M1.deltaSplitS
-            S = ceo.mapping.cat(ceo.Mapping(self.outer_xy,np.hstack(M1_S[:-1]))(201,8.5),
-                                ceo.Mapping(self.center_xy,M1_S[-1])(201,8.5),list(range(7)))
-            self.gmt[mirror] = ceo.GMT_M1(mirror_modes=u'truptiBM',N_MODE=1,mirror_modes_data=S.data)
-            self.gmt[mirror].modes.a[:] = np.ones((7,1))
-            self.gmt[mirror].modes.update()
+        self.logger.info('Start')
+        self.gmt[mirror] = getattr(ceo,"GMT_"+mirror)( **mirror_args )
         return b"GMT"
 @
 
@@ -371,7 +370,7 @@ The message that triggers the call to the \emph{Update} method is
 "args": 
   {
     "mirror": "M1"|"M2",
-    "inputs_args":
+    "inputs":
       {
         "TxyzRxyz": null,
         "mode_coefs": null
@@ -380,46 +379,22 @@ The message that triggers the call to the \emph{Update} method is
 }
 @
 <<SGMT>>=
-    def Update(self, mirror=None, inputs_args=None):
-        for key in inputs_args:
-            data = np.array( inputs_args[key], order='C', dtype=np.float64 )
+    def Update(self, mirror=None, inputs=None):
+        for key in inputs:
+            data = np.array( inputs[key], order='C', dtype=np.float64 )
             data = np.transpose( np.reshape( data , (-1,7) ) )
-            if mirror=='M1' and self.M1 is not None :
-                if key=="TxyzRxyz":
-                    delta_Txyz = data[:,:3] - self.gmt[mirror].motion_CS.origin[:]
-                    delta_Rxyz = data[:,3:] - self.gmt[mirror].motion_CS.euler_angles[:]
-                    self.gmt[mirror].motion_CS.origin[:]       = data[:,:3]
-                    self.gmt[mirror].motion_CS.euler_angles[:] = data[:,3:]
-                    self.gmt[mirror].motion_CS.update()
-
-                    self.M1.motion(Txyz=delta_Txyz,Rxyz=delta_Rxyz)
-                    M1_S = self.M1.deltaSplitS
-                    S = ceo.mapping.cat(ceo.Mapping(self.outer_xy,np.hstack(M1_S[:-1]))(201,8.5),
-                                        ceo.Mapping(self.center_xy,M1_S[-1])(201,8.5),list(range(7)))
-                    self.gmt[mirror].modes.modes = S.data['M']
-                if key=="mode_coefs":
-                    self.gmt[mirror].modes.a[:] = np.ones((7,1))
+            if key=="TxyzRxyz":
+                self.gmt[mirror].motion_CS.origin[:]       = data[:,:3]
+                self.gmt[mirror].motion_CS.euler_angles[:] = data[:,3:]
+                self.gmt[mirror].motion_CS.update()
+            elif key=="mode_coefs":
+                    self.gmt[mirror].modes.a[:] = data
                     self.gmt[mirror].modes.update()
-                    self.M1.reset(force_only=True,stray_weight=False,stray_friction=False)
-                    self.M1.bmCoefs = data
-                    M1_S = self.M1.deltaSplitS
-                    S = ceo.mapping.cat(ceo.Mapping(self.outer_xy,np.hstack(M1_S[:-1]),method='Nearest')(201,8.5),
-                                                ceo.Mapping(self.center_xy,M1_S[-1],method='Nearest')(201,8.5),list(range(7)))
-                    self.gmt[mirror].modes.modes = S.data['M']
-            else:
-                print('NOT HERE')
-                if key=="TxyzRxyz":
-                    self.gmt[mirror].motion_CS.origin[:]       = data[:,:3]
-                    self.gmt[mirror].motion_CS.euler_angles[:] = data[:,3:]
-                    self.gmt[mirror].motion_CS.update()
-                elif key=="mode_coefs":
-                        self.gmt[mirror].modes.a[:] = data
-                        self.gmt[mirror].modes.update()
 @
 \paragraph{InitializeConditions}
 
 <<SGMT>>=
-    def InitializeConditions(self, args=None):
+    def Init(self, args=None):
         pass
 @
 \paragraph{Outputs}
@@ -941,14 +916,19 @@ logging.basicConfig(level=logging.DEBUG)
 class DOS:
     def __init__(self,path_to_config_dir):
         self.logger = logging.getLogger(self.__class__.__name__)
+
         cfg_file = os.path.join(path_to_config_dir,'dos.yaml')
         self.logger.info('Reading config from %s',cfg_file)
         with open(cfg_file) as f:
             self.cfg = yaml.load(f)
+
+        self.agent = broker(self.cfg['simulation']['simceo server']['IP'])
+
         self.N_SAMPLE = int(self.cfg['simulation']['sampling frequency']*
                             self.cfg['simulation']['duration'])
         <<check parameter file existence>>
         <<linking the drivers IO>>
+        <<device to driver association>>
         <<starting the drivers>>
         <<initializing the drivers>>
         <<running the loop>>
@@ -966,7 +946,7 @@ for d,v in self.cfg['drivers'].items():
     prm_file = os.path.join(path_to_config_dir,d+'.yaml')
     if os.path.isfile(prm_file):
         self.logger.info('New driver: %s',d)
-        self.drivers[d] = Driver(d,**v)
+        self.drivers[d] = Driver(d,self.agent,**v)
     else:
         self.logger.warning('%s is missing!',prm_file)
 @
@@ -1021,6 +1001,31 @@ def tie(self,drivers):
 <<IO linking>>
         self.data = drivers[d].inputs[io].data
 @
+The device parameters are loaded from the device parameter file and formatted
+into a message sent to CEO server.
+<<device to driver association>>=
+for k_d in self.drivers:
+    d = self.drivers[k_d]
+    device = os.path.join(path_to_config_dir,k_d+'.yaml')
+    d.associate(device)
+<<device parameter loading and formatting>>=
+def associate(self,prm_file):
+    with open(prm_file) as f:
+        prm = yaml.load(f)
+    if 'mirror' in prm:
+        self.msg['class_id'] = 'GMT'
+        self.msg_args['Start'].update(prm)
+        self.msg_args['Update']['mirror'] = prm['mirror']
+        self.msg_args['Update']['inputs'].update({k_i:v_i.data for k_i,v_i in self.inputs.items()})
+    else:
+        self.msg['class_id'] = 'OP'
+        self.msg_args['Start'] = {'source_args':{},
+                                  'sensor_class':None,
+                                  'sensor_args':None,
+                                  'calibration_source':None,
+                                  'miscellaneous_args':None}
+        self.msg_args['Outputs']['outputs'] += [k_o for k_o in self.outputs]
+@
 Once the parameters are loaded and the drivers linked, we call the drivers [[start]]
 <<starting the drivers>>=
 self.start = map(lambda x: x.start(), self.drivers.values())
@@ -1043,6 +1048,175 @@ def stepping(self):
 The simulation ends-up with calling the [[terminate]] methods.
 <<terminating>>=
 self.terminate = map(lambda x: x.terminate(), self.drivers.values())
+@
+
+\subsection{DOS driver}
+\label{sec:dos-driver}
+   
+The next section is the [[drivers]] section.
+This section lists all the devices that makes the simulation.
+There is a many subsections as drivers.
+A [[drivers]] has a unique name [[device name]] that must be matched by a
+parameter file of the same name [[device name]].yaml.
+An object is associated to each device.
+The object have the following methods: [[start]],[[init]],[[update]],[[output]]
+and [[terminate]].
+Each device execute first the [[start]] method followed by the [[init]] method.
+Then after [[delay]] samples, the [[update]] method is called at the given
+[[sampling rate]] reading its inputs.
+Each device inputs is defined by a name and has for properties either a size or
+a list with the origin device and origin device output name.
+The [[update]] method is followed by the [[output]] method
+Each device outputs is defined by a name and has for properties a given sampling frequency and either a size or a list with the input destination device and destination device input name.
+<<dos drivers section>>=
+drivers:
+  device name:
+    delay: 7 # [sample]
+    sampling rate: 5 # [sample]
+    inputs:
+      input name:
+        size: 0
+        origin: [device, device output name]
+    outputs:
+      output name:
+        sampling rate: 10 # [sample]
+        size: 0
+        destination: [device, device input name]
+@
+The [[drivers]] method are defined in the [[Driver]] class.
+<<Driver methods>>=
+def start(self):
+    self.logger.debug('Starting!')
+    m = 'Start'
+    <<client-server exchange>>
+def init(self):
+    self.logger.debug('Initializing!')
+    m = 'Init'
+    <<client-server exchange>>
+def update(self,step):
+    if step>=self.delay and step%self.sampling_rate==0:
+        self.logger.debug('Updating!')
+        m = 'Update'
+        <<client-server exchange>>
+def output(self,step):
+    if step>=self.delay:
+        for k,v in self.outputs.items():
+            if step%v.sampling_rate==0:
+                self.logger.debug('Outputing %s!',k)
+                m = 'Outputs'
+                <<client-server exchange>>
+def terminate(self):
+    self.logger.debug('Terminating!')
+    m = 'Terminate'
+    <<client-server exchange>>
+
+@
+Each method communicates with the server using the same protocol
+<<client-server exchange>>=
+self.msg['method_id'] = m
+self.msg['args'].update(self.msg_args[m])
+self.server._send_(self.msg)
+self.msg['method_id'] = ''
+self.msg['args'].clear()
+return self.server._recv_()
+@
+\subsubsection{Driver inputs/outputs}
+\label{sec:driver-io}
+
+
+Inputs and outputs are saved as dictionaries with the input and output names as
+keys and the values being an instance of the [[Inputs]] and [[Outputs]] classes.
+<<IO>>=
+class IO:
+    def __init__(self,tag,size=0, lien=None):
+        self.logger = logging.getLogger(tag)
+        self.size = size
+        self.data = np.zeros(size)
+        self.lien = lien
+<<Inputs>>=
+class Input(IO):
+    def __init__(self,tag,size=0,origin=None):
+        IO.__init__(self,tag,size=size,lien=origin)
+    <<input linking>>
+@
+and [[Outputs]] classes.
+<<Outputs>>=
+class Output(IO):
+    def __init__(self,tag,size=0,sampling_rate=1,destination=None):
+        IO.__init__(self,tag,size=size,lien=destination)
+        self.sampling_rate = sampling_rate
+    <<output linking>>
+@
+<<dos.py>>=
+<<IO>>
+<<Inputs>>
+<<Outputs>>
+class Driver:
+    def __init__(self,tag,server,delay=0,sampling_rate=1,**kwargs):
+        self.logger = logging.getLogger(tag)
+        self.tag           = tag
+        self.server        = server
+        self.delay         = delay
+        self.sampling_rate = sampling_rate
+        self.inputs        = {}
+        if 'inputs' in kwargs:
+            for k,v in kwargs['inputs'].items():
+                self.logger.info('New input: %s',k)
+                self.inputs[k] = Input(k,**v)
+        self.outputs       = {}
+        if 'outputs' in kwargs:
+            for k,v in kwargs['outputs'].items():
+                self.logger.info('New output: %s',k)
+                self.outputs[k] = Output(k,**v)
+        self.msg = {'class_id':'',
+                    'method_id':'',
+                    'args':{}}
+        self.msg_args = {'Start':{},
+                    'Init':{},
+                    'Update':{'inputs':{}},
+                    'Outputs':{'outputs':[]},
+                    'Terminate':{'args':None}}
+
+    <<Driver methods>>
+
+    <<device parameter loading and formatting>>
+@
+
+\subsection{The broker}
+\label{sec:client-broker}
+
+<<dos imports>>=
+import zmq
+import pickle
+import zlib
+@
+<<dos.py>>=
+class broker:
+
+    def __init__(self,IP):
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.context = zmq.Context()
+        self.logger.info("Connecting to server...")
+        self.socket = self.context.socket(zmq.REQ)
+        self.socket.connect("tcp://{}:3650".format(IP))
+        self._send_("Acknowledging connection from SIMCEO client!")
+        print(self._recv_())
+
+    def __del__(self):
+        self.logger.info('Disconnecting from server!')
+        self.socket.close()
+        self.context.term()
+
+    def _send_(self,obj,protocol=-1,flags=0):
+        pobj = pickle.dumps(obj,protocol)
+        zobj = zlib.compress(pobj)
+        self.socket.send(zobj, flags=flags)
+
+    def _recv_(self,flags=0):
+        zobj = self.socket.recv(flags)
+        pobj = zlib.decompress(zobj)
+        return pickle.loads(pobj)
+
 @
 
 \subsection{Timing diagram}
@@ -1123,133 +1297,6 @@ def diagram(self):
     return sampling,main
 @
 
-\subsection{DOS driver}
-\label{sec:dos-driver}
-   
-The next section is the [[drivers]] section.
-This section lists all the devices that makes the simulation.
-There is a many subsections as drivers.
-A [[drivers]] has a unique name [[device name]] that must be matched by a
-parameter file of the same name [[device name]].yaml.
-An object is associated to each device.
-The object have the following methods: [[start]],[[init]],[[update]],[[output]]
-and [[terminate]].
-Each device execute first the [[start]] method followed by the [[init]] method.
-Then after [[delay]] samples, the [[update]] method is called at the given
-[[sampling rate]] reading its inputs.
-Each device inputs is defined by a name and has for properties either a size or
-a list with the origin device and origin device output name.
-The [[update]] method is followed by the [[output]] method
-Each device outputs is defined by a name and has for properties a given sampling frequency and either a size or a list with the input destination device and destination device input name.
-<<dos drivers section>>=
-drivers:
-  device name:
-    delay: 7 # [sample]
-    sampling rate: 5 # [sample]
-    inputs:
-      input name:
-        size: 0
-        origin: [device, device output name]
-    outputs:
-      output name:
-        sampling rate: 10 # [sample]
-        size: 0
-        destination: [device, device input name]
-@
-The [[drivers]] method are defined in the [[Driver]] class.
-<<Driver methods>>=
-def start(self):
-    self.logger.debug('Starting!')
-def init(self):
-    self.logger.debug('Initializing!')
-def update(self,step):
-    if step>self.delay and step%self.sampling_rate==0:
-        self.logger.debug('Updating!')
-def output(self,step):
-    if step>self.delay:
-        for k,v in self.outputs.items():
-            if step%v.sampling_rate==0:
-                self.logger.debug('Outputing %s!',k)
-def terminate(self):
-    self.logger.debug('Terminating!')
-@
-Inputs and outputs are saved as dictionaries with the input and output names as
-keys and the values being an instance of the [[Inputs]] and [[Outputs]] classes.
-<<IO>>=
-class IO:
-    def __init__(self,tag,size=0, lien=None):
-        self.logger = logging.getLogger(tag)
-        self.size = size
-        self.data = np.zeros(size)
-        self.lien = lien
-<<Inputs>>=
-class Input(IO):
-    def __init__(self,tag,size=0,origin=None):
-        IO.__init__(self,tag,size=size,lien=origin)
-    <<input linking>>
-@
-and [[Outputs]] classes.
-<<Outputs>>=
-class Output(IO):
-    def __init__(self,tag,size=0,sampling_rate=1,destination=None):
-        IO.__init__(self,tag,size=size,lien=destination)
-        self.sampling_rate = sampling_rate
-    <<output linking>>
-@
-The device parameters are loaded from the device parameter file and formatted
-into a message sent to CEO server.
-<<device parameter loading and formatting>>=
-def device_setup(self,prm_file):
-    with open(prm_file) as f:
-        prm = yaml.load(f)
-    if 'mirror' in prm:
-        class_id = 'GMT'
-        device_args = {'start':prm,
-                       'update':
-                       {'mirror':prm['mirror'],
-                        'inputs_args':
-                        {'TxyzRxyz':None
-                         'mode_coefs':None}}}
-    else:
-        class_id = 'OP'
-        device_args = {'start':
-                       {'source_args':{},
-                        'sensor_class':None
-                        'sensor_args':None,
-                        'calibration_source':None
-                        'miscellaneous_args':None},
-                       'init':{},
-                       'update':{'inputs':None},
-                       'outputs':{'outputs':None},
-                       'terminate':{'args':None}}
-    device_msg = {'class_id':class_id,
-                  'method_id':''
-                  'args':device_args
-@
-<<dos.py>>=
-<<IO>>
-<<Inputs>>
-<<Outputs>>
-class Driver:
-    def __init__(self,tag,delay=0,sampling_rate=1,**kwargs):
-        self.logger = logging.getLogger(tag)
-        self.tag           = tag
-        self.delay         = delay
-        self.sampling_rate = sampling_rate
-        self.inputs        = {}
-        if 'inputs' in kwargs:
-            for k,v in kwargs['inputs'].items():
-                self.logger.info('New input: %s',k)
-                self.inputs[k] = Input(k,**v)
-        self.outputs       = {}
-        if 'outputs' in kwargs:
-            for k,v in kwargs['outputs'].items():
-                self.logger.info('New output: %s',k)
-                self.outputs[k] = Output(k,**v)
-
-    <<Driver methods>>
-@
-
 \section{The python client}
 \label{sec:python-client}
 
@@ -1277,35 +1324,6 @@ class SIM:
         self.T = cfg['simulation']['duration']
 
         self.simceo = broker(cfg['simceo server']['IP'])
-
-@
-<<simceoclient.py>>=
-class broker:
-
-    def __init__(self,IP):
-        with open(os.path.join(SIMCEOPATH,'etc','simceo.yaml')) as f:
-            cfg = yaml.load(f)
-        self.context = zmq.Context()
-        print("@(broker)> Connecting to server...")
-        self.socket = self.context.socket(zmq.REQ)
-        self.socket.connect("tcp://{}:3650".format(IP))
-        self._send_("Acknowledging connection from SIMCEO client!")
-        print(self._recv_())
-
-    def __del__(self):
-        print('@(broker)> Disconnecting from server!')
-        self.socket.close()
-        self.context.term()
-
-    def _send_(self,obj,protocol=-1,flags=0):
-        pobj = pickle.dumps(obj,protocol)
-        zobj = zlib.compress(pobj)
-        self.socket.send(zobj, flags=flags)
-
-    def _recv_(self,flags=0):
-        zobj = self.socket.recv(flags)
-        pobj = zlib.decompress(zobj)
-        return pickle.loads(pobj)
 
 @
 <<simceoclient.py>>=
