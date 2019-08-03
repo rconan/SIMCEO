@@ -932,6 +932,7 @@ import os
 import yaml
 import logging
 import threading
+import numpy as np
 <<dos.py>>=
 <<dos imports>>
 
@@ -939,7 +940,6 @@ logging.basicConfig(level=logging.DEBUG)
 
 class DOS:
     def __init__(self,path_to_config_dir):
-        threading.Thread.__init__(self)
         self.logger = logging.getLogger(self.__class__.__name__)
         cfg_file = os.path.join(path_to_config_dir,'dos.yaml')
         self.logger.info('Reading config from %s',cfg_file)
@@ -948,6 +948,7 @@ class DOS:
         self.N_SAMPLE = int(self.cfg['simulation']['sampling frequency']*
                             self.cfg['simulation']['duration'])
         <<check parameter file existence>>
+        <<linking the drivers IO>>
         <<starting the drivers>>
         <<initializing the drivers>>
         <<running the loop>>
@@ -998,7 +999,29 @@ calibrations:
       mode: segment tip-tilt
       stroke: 1e-6
 @
-Once the parameters are loaded, we call the drivers [[start]]
+Once each driver is instantiated, their inputs and outputs are tied
+<<linking the drivers IO>>=
+for k_d in self.drivers:
+    d = self.drivers[k_d]
+    for k_i in d.inputs:
+        d.inputs[k_i].tie(self.drivers)
+    for k_o in d.outputs:
+        d.outputs[k_o].tie(self.drivers)
+@
+The [[Input]] and [[Output]] [[tie]] methods set the [[data]] pointer when a [[lien]] to another [[Driver]] exists:
+<<IO linking>>=
+def tie(self,drivers):
+    if self.lien is not None:
+        d,io = self.lien
+        self.logger.info('Linked to %s from %s',io,d)
+<<input linking>>=
+<<IO linking>>
+        self.data = drivers[d].outputs[io].data
+<<output linking>>=
+<<IO linking>>
+        self.data = drivers[d].inputs[io].data
+@
+Once the parameters are loaded and the drivers linked, we call the drivers [[start]]
 <<starting the drivers>>=
 self.start = map(lambda x: x.start(), self.drivers.values())
 @
@@ -1034,14 +1057,40 @@ from graphviz import Digraph
 def diagram(self):
     def add_item(sample_rate,driver_name,method):
         if not sample_rate in sampling:
-            sampling[sample_rate] = []
-        sampling[sample_rate] += [driver_name+'_'+method]
+            sampling[sample_rate] = {}
+        if not driver_name in sampling[sample_rate]:
+            sampling[sample_rate][driver_name] = [method]
+        else:
+            sampling[sample_rate][driver_name] += [method]
+    def make_nodes(_s_):
+        ss = str(_s_)
+        c = Digraph(ss)
+        c.attr(rank='same')
+        c.node(ss,time_label(_s_))
+        [c.node(ss+'_'+_,make_label(_,sampling[_s_][_])) for _ in sampling[_s_]]
+        return c
+    def make_label(d,dv):
+        label = "<TR><TD><B>{}</B></TD></TR>".format(d)
+        for v in dv:
+            label += '''<TR><TD PORT="{0}_{1}">{1}</TD></TR>'''.format(d,v)
+        return '''@<<TABLE BORDER="0" CELLBORDER="1">{}</TABLE@>>'''.format(label)
+    def search_method(d,m):
+        for s in sampling:
+            if d in sampling[s]:
+                if m in sampling[s][d]:
+                    return '{0}_{1}:{1}_{2}'.format(str(s),d,m)
+    def time_label(n):
+        nu = self.cfg['simulation']['sampling frequency']
+        t = n/nu
+        if t<1:
+            return '{:.1f}ms'.format(t*1e3)
+        else:
+            return '{:.1f}s'.format(t)
 
-    main = Digraph(format='png')
+    main = Digraph(format='png', node_attr={'shape': 'plaintext'})
 
     sampling = {}
     for dk in self.drivers:
-        #main.node(k+'_update')
         d = self.drivers[dk]
         if d.delay>0:
             add_item(d.delay,dk,'delay')
@@ -1051,25 +1100,25 @@ def diagram(self):
             add_item(o.sampling_rate,dk,'output')
 
     s = sorted(sampling)
-
-    c = Digraph(str(s[0]))
-    c.attr(rank='same')
-    c.attr('node',shape='plaintext')
-    c.node(str(s[0]))
-    c.attr('node',shape='box')
-    [c.node(_) for _ in sampling[s[0]]]
-    main.subgraph(c)
-    for k in range(1,len(s)):
-        c = Digraph(str(s[k]))
-        c.attr(rank='same')
-        c.attr('node',shape='plaintext')
-        c.node(str(s[k]))
-        c.attr('node',shape='box')
-        [c.node(_) for _ in sampling[s[k]]]
-        main.subgraph(c)
+    [main.subgraph(make_nodes(_)) for _ in s]
 
     for k in range(1,len(s)):
         main.edge(str(s[k-1]),str(s[k]))
+
+    for s in sampling:
+        for d in sampling[s]:
+            m = sampling[s][d]
+            if not (len(m)==1 and m[0]=='delay'):
+                for ik in self.drivers[d].inputs:
+                    data = self.drivers[d].inputs[ik]
+                    if data.origin is not None:
+                        main.edge(search_method(data.origin[0],'output'),
+                                  '{0}_{1}:{1}_update'.format(str(s),d))
+                for ok in self.drivers[d].outputs:
+                    data = self.drivers[d].outputs[ok]
+                    if data.destination is not None:
+                        main.edge('{0}_{1}:{1}_output'.format(str(s),d),
+                                  search_method(data.destination[0],'update'))
 
     return sampling,main
 @
@@ -1128,21 +1177,54 @@ Inputs and outputs are saved as dictionaries with the input and output names as
 keys and the values being an instance of the [[Inputs]] and [[Outputs]] classes.
 <<IO>>=
 class IO:
-    def __init__(self,size=0):
+    def __init__(self,tag,size=0, lien=None):
+        self.logger = logging.getLogger(tag)
         self.size = size
+        self.data = np.zeros(size)
+        self.lien = lien
 <<Inputs>>=
 class Input(IO):
-    def __init__(self,size=0,origin=None):
-        IO.__init__(self,size)
-        self.origin = origin
+    def __init__(self,tag,size=0,origin=None):
+        IO.__init__(self,tag,size=size,lien=origin)
+    <<input linking>>
 @
 and [[Outputs]] classes.
 <<Outputs>>=
 class Output(IO):
-    def __init__(self,size=0,sampling_rate=1,destination=None):
-        IO.__init__(self,size)
+    def __init__(self,tag,size=0,sampling_rate=1,destination=None):
+        IO.__init__(self,tag,size=size,lien=destination)
         self.sampling_rate = sampling_rate
-        self.destination = destination
+    <<output linking>>
+@
+The device parameters are loaded from the device parameter file and formatted
+into a message sent to CEO server.
+<<device parameter loading and formatting>>=
+def device_setup(self,prm_file):
+    with open(prm_file) as f:
+        prm = yaml.load(f)
+    if 'mirror' in prm:
+        class_id = 'GMT'
+        device_args = {'start':prm,
+                       'update':
+                       {'mirror':prm['mirror'],
+                        'inputs_args':
+                        {'TxyzRxyz':None
+                         'mode_coefs':None}}}
+    else:
+        class_id = 'OP'
+        device_args = {'start':
+                       {'source_args':{},
+                        'sensor_class':None
+                        'sensor_args':None,
+                        'calibration_source':None
+                        'miscellaneous_args':None},
+                       'init':{},
+                       'update':{'inputs':None},
+                       'outputs':{'outputs':None},
+                       'terminate':{'args':None}}
+    device_msg = {'class_id':class_id,
+                  'method_id':''
+                  'args':device_args
 @
 <<dos.py>>=
 <<IO>>
@@ -1151,18 +1233,19 @@ class Output(IO):
 class Driver:
     def __init__(self,tag,delay=0,sampling_rate=1,**kwargs):
         self.logger = logging.getLogger(tag)
+        self.tag           = tag
         self.delay         = delay
         self.sampling_rate = sampling_rate
         self.inputs        = {}
         if 'inputs' in kwargs:
             for k,v in kwargs['inputs'].items():
                 self.logger.info('New input: %s',k)
-                self.inputs[k] = Input(**v)
+                self.inputs[k] = Input(k,**v)
         self.outputs       = {}
         if 'outputs' in kwargs:
             for k,v in kwargs['outputs'].items():
                 self.logger.info('New output: %s',k)
-                self.outputs[k] = Output(**v)
+                self.outputs[k] = Output(k,**v)
 
     <<Driver methods>>
 @
