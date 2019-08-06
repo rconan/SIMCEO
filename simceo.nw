@@ -385,10 +385,13 @@ The message that triggers the call to the \emph{Update} method is
     def Update(self, mirror=None, inputs=None):
         for key in inputs:
             data = np.array( inputs[key], order='C', dtype=np.float64 )
-            data = np.transpose( np.reshape( data , (-1,7) ) )
+            #data = np.transpose( np.reshape( data , (-1,7) ) )
             if key=="TxyzRxyz":
                 self.gmt[mirror].motion_CS.origin[:]       = data[:,:3]
                 self.gmt[mirror].motion_CS.euler_angles[:] = data[:,3:]
+                self.gmt[mirror].motion_CS.update()
+            elif key=="Rxy":
+                self.gmt[mirror].motion_CS.euler_angles[:,:2] = data
                 self.gmt[mirror].motion_CS.update()
             elif key=="mode_coefs":
                     self.gmt[mirror].modes.a[:] = data
@@ -602,7 +605,8 @@ and the dictionnary implementation is
                 pssn = self.gmt.PSSn(self.src,**self.pssn_data)
             return pssn
         else:
-            c = self.comm_matrix[key].dot( self.sensor.Data ).reshape(1,-1)
+            c = self.comm_matrix[key].dot( self.sensor.Data ).ravel()
+            self.logger.debug('C= %s',c)
             return c.tolist()
 @
 \paragraph{InitializeConditions}
@@ -701,7 +705,7 @@ The message that triggers a call to the \emph{InitializeConditions} method is
 @
 <<SOpticalPath>>=
     def Init(self, calibrations=None, filename=None,
-                             pseudo_inverse=None):
+         pseudo_inverse={}):
         print("@(SOpticalPath:InitializeConditions)>")
         if calibrations is not None:
             if filename is not None:
@@ -739,6 +743,7 @@ The message that triggers a call to the \emph{InitializeConditions} method is
                         self.comm_matrix[key] = C
                 else:
                     for key in calibrations: # Through calibrations
+                        self.logger.info('Calibration: %s',key)
                         calibs = calibrations[key]
                         #Gif not isinstance(calibs,list):
                         #    calibs = [calibs]
@@ -747,10 +752,11 @@ The message that triggers a call to the \emph{InitializeConditions} method is
                         self.gmt.reset()
                         self.src.reset()
                         self.sensor.reset()
-                        C = getattr( self.gmt, calibs["method_id"] )( self.sensor, 
-                                                                 self.src,
-                                                                 calibrationVaultKwargs=pseudo_inverse, 
-                                                                 **calibs["args"])
+                        C = getattr( self.gmt, calibs["method_id"] )( \
+                                            self.sensor, 
+                                            self.src,
+                                            calibrationVaultKwargs=pseudo_inverse, 
+                                            **calibs["args"])
                         self.gmt.reset()
                         self.src.reset()
                         self.sensor.reset()
@@ -913,6 +919,7 @@ import yaml
 import logging
 import threading
 import numpy as np
+from . import driver
 <<dos.py>>=
 <<dos imports>>
 
@@ -927,7 +934,7 @@ class DOS:
         with open(cfg_file) as f:
             self.cfg = yaml.load(f)
 
-        self.agent = broker(self.cfg['simulation']['simceo server']['IP'])
+        self.agent = broker(self.cfg['simulation']['server']['IP'])
 
         self.N_SAMPLE = int(self.cfg['simulation']['sampling frequency']*
                             self.cfg['simulation']['duration'])
@@ -938,6 +945,10 @@ class DOS:
         <<initializing the drivers>>
         <<running the loop>>
         <<terminating>>
+
+    <<starting the simulation>>
+
+    <<initializing the simulation>>
 
     <<stepping through>>
 
@@ -951,7 +962,10 @@ for d,v in self.cfg['drivers'].items():
     prm_file = os.path.join(path_to_config_dir,d+'.yaml')
     if os.path.isfile(prm_file):
         self.logger.info('New driver: %s',d)
-        self.drivers[d] = Driver(d,self.agent,**v)
+        if 'server' in v and v['server'] is False:
+            self.drivers[d] = driver.Client(d,**v)
+        else:
+            self.drivers[d] = driver.Server(d,self.agent,**v)
     else:
         self.logger.warning('%s is missing!',prm_file)
 @
@@ -1002,9 +1016,11 @@ def tie(self,drivers):
 <<input linking>>=
 <<IO linking>>
         self.data = drivers[d].outputs[io].data
+        self.size = self.data.shape
 <<output linking>>=
 <<IO linking>>
         self.data = drivers[d].inputs[io].data
+        self.size = self.data.shape
 @
 The device parameters are loaded from the device parameter file and formatted
 into a message sent to CEO server.
@@ -1013,7 +1029,7 @@ for k_d in self.drivers:
     d = self.drivers[k_d]
     device = os.path.join(path_to_config_dir,k_d+'.yaml')
     d.associate(device)
-<<device parameter loading and formatting>>=
+<<Server device parameter loading and formatting>>=
 def associate(self,prm_file):
     with open(prm_file) as f:
         prm = yaml.load(f)
@@ -1027,18 +1043,44 @@ def associate(self,prm_file):
         self.msg['class_id'] = 'OP'
         self.msg_args['Start'].update({'source_args':prm['source'],
                                        'sensor_class':prm['sensor']['class'],
-                                       'sensor_args':None,
+                                       'sensor_args':{},
                                        'calibration_source_args':None,
                                        'miscellaneous_args':None})
+        if prm['sensor']['class'] is not None:
+            self.msg_args['Start']['sensor_args'].update(prm['sensor']['args'])
+        self.msg_args['Init'].update({'calibrations':prm['calibrations']})
         self.msg_args['Outputs']['outputs'] += [k_o for k_o in self.outputs]
+<<driver imports>>=
+from scipy import signal
+<<Client device parameter loading and formatting>>=
+def associate(self,prm_file):
+    with open(prm_file) as f:
+        prm = yaml.load(f)
+    if 'transfer function' in prm['system']:
+        system = prm['system']
+        self.system = signal.dlti(system['transfer function']['num'],
+                                  system['transfer function']['denom'])
+    elif 'zeros poles gain' in prm['system']:
+        system = prm['system']
+        self.system = signal.dlti(system['transfer function']['zeros'],
+                                  system['transfer function']['poles'],
+                                  system['transfer function']['gain'])
+    else:
+        raise Exception("System should be of the type 'transfer function' or 'zeros poles gains'")
 @
 Once the parameters are loaded and the drivers linked, we call the drivers [[start]]
 <<starting the drivers>>=
-self.start = map(lambda x: x.start(), self.drivers.values())
+self.__start__ = map(lambda x: x.start(), self.drivers.values())
+<<starting the simulation>>=
+def start(self):
+    list(self.__start__)
 @
 and [[init]] methods:
 <<initializing the drivers>>=
-self.init = map(lambda x: x.init(), self.drivers.values())
+self.__init__ = map(lambda x: x.init(), self.drivers.values())
+<<initializing the simulation>>=
+def init(self):
+    list(self.__init__)
 @
 Then the [[update]] and [[output]] methods are called successively for the total
 [[duration]] of the simulation.
@@ -1112,8 +1154,9 @@ def output(self,step):
                 self.logger.debug('Outputing %s!',k)
                 m = 'Outputs'
                 <<client-server exchange>>
+                self.logger.debug("Reply: %s",reply)
                 for k,v in reply.items():
-                    self.outputs[k].data[...] = v
+                    self.outputs[k].data[...] = np.asarray(v).reshape(self.outputs[k].size)
 def terminate(self):
     self.logger.debug('Terminating!')
     m = 'Terminate'
@@ -1155,12 +1198,17 @@ class Output(IO):
         IO.__init__(self,tag,size=size,lien=destination)
         self.sampling_rate = sampling_rate
     <<output linking>>
-@
-<<dos.py>>=
+<<driver imports>>=
+import numpy as np
+import yaml
+import logging
+<<driver.py>>=
+<<driver imports>>
+logging.basicConfig(level=logging.DEBUG)
 <<IO>>
 <<Inputs>>
 <<Outputs>>
-class Driver:
+class Server:
     def __init__(self,tag,server,delay=0,sampling_rate=1,**kwargs):
         self.logger = logging.getLogger(tag)
         self.tag           = tag
@@ -1188,7 +1236,64 @@ class Driver:
 
     <<Driver methods>>
 
-    <<device parameter loading and formatting>>
+    <<Server device parameter loading and formatting>>
+@
+A driver can also be just to serve the client:
+<<driver.py>>=
+class Client():
+    def __init__(self,tag,delay=0,sampling_rate=1,**kwargs):
+        self.logger = logging.getLogger(tag)
+        self.tag           = tag
+        self.delay         = delay
+        self.sampling_rate = sampling_rate
+        self.inputs        = {}
+        if 'inputs' in kwargs:
+            for k,v in kwargs['inputs'].items():
+                self.logger.info('New input: %s',k)
+                self.inputs[k] = Input(k,**v)
+        self.outputs       = {}
+        if 'outputs' in kwargs:
+            for k,v in kwargs['outputs'].items():
+                self.logger.info('New output: %s',k)
+                self.outputs[k] = Output(k,**v)
+        self.system = None
+        self.__xout = np.zeros(0)
+        self.__yout = np.zeros(0)
+
+    <<Client methods>>
+
+    <<Client device parameter loading and formatting>>
+@
+<<Client methods>>=
+def start(self):
+    self.logger.debug('Starting!')
+    pass
+def init(self):
+    self.logger.debug('Initializing!')
+    self.system = self.system._as_ss()
+    self.__xout = np.zeros((1,self.system.A.shape[0]))
+    self.__yout = np.zeros((1, self.system.C.shape[0]))
+def update(self,step):
+    if step>=self.delay and step%self.sampling_rate==0:
+        self.logger.debug('Updating!')
+        u = np.hstack([_.data.reshape(1,-1) for _  in self.inputs.values()])
+        self.logger.debug('u: %s',u)
+        self.__yout = np.dot(self.system.C, self.__xout) + np.dot(self.system.D, u)
+        self.__xout = np.dot(self.system.A, self.__xout) + np.dot(self.system.B, u)
+
+def output(self,step):
+    if step>=self.delay:
+        for k,v in self.outputs.items():
+            if step%v.sampling_rate==0:
+                self.logger.debug('Outputing %s!',k)
+                a = 0
+                for k in self.outputs:
+                    b = a + self.outputs[k].data.size
+                    self.outputs[k].data[...] = self.__yout[0,a:b].reshape(self.outputs[k].size)
+                    a = b
+
+def terminate(self):
+    self.logger.debug('Terminating!')
 @
 
 \subsection{The broker}

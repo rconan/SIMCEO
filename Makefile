@@ -7,10 +7,11 @@ python: simceo.nw simceo.py
 	mkdir -p calibration_dbs
 pythonclient: 
 	$(TANGLE) -Rsimceoclient.py simceo.nw > simceoclient.py
-dos: 
+dosapi: 
 	$(TANGLE) -Rdos.yaml simceo.nw > etc/dos/dos.yaml
 	$(TANGLE) -R"device name.yaml" simceo.nw > "etc/dos/device name.yaml"
-	$(TANGLE) -Rdos.py simceo.nw > dos.py
+	$(TANGLE) -Rdos.py simceo.nw > dos/dos.py
+	$(TANGLE) -Rdriver.py simceo.nw > dos/driver.py
 matlab: simceo.nw maskdoc
 	mkdir -p +ceo
 	$(TANGLE) -Rbroker.m simceo.nw > +ceo/broker.m
