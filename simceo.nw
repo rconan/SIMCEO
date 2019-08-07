@@ -266,7 +266,7 @@ def __getitem__(self,key):
         else:
             self.ops.append( SOpticalPath( len(self.ops) ,
                                            self.sgmt.gmt ,
-                                           self.satm ) )            
+                                           self.satm.atm ) )            
             self.n_op = len(self.ops)
             return self.ops[-1]
     elif key=='testComm':
@@ -415,6 +415,14 @@ The message that triggers the call to the \emph{Update} method is
 
 The \emph{SAtmosphere} class is the interface class between a CEO \emph{GmtAtmosphere} object and a \emph{Atmosphere} Simulink block.
 <<SAtmosphere>>=
+class _Atmosphere_(ceo.GmtAtmosphere):
+    def __init__(**kwargs):
+        super().__init__(self,**kwargs%)
+        self.N = kwargs['NXY_PUPIL']
+        self.L = kwargs['L']
+        self.delta = self.L/(self.N-1)
+    def propagate(self,src):
+        super().ray_tracing(src,self.delta,self.N,self.delta,self.N,src.timeStamp)
 class SAtmosphere(Sfunction):
 
     def __init__(self, ops):
@@ -422,7 +430,7 @@ class SAtmosphere(Sfunction):
 
     def Start(self, **kwargs):
         print("\n@(SAtmosphere:Start)>")
-        self.atm = ceo.JGmtAtmosphere( **kwargs )
+        self.atm = _Atmosphere_( **kwargs )
         return b"ATM"
 
     def Terminate(self, args=None):
@@ -448,12 +456,12 @@ The \emph{SOpticalClass} gathers a source object \emph{src}, the GMT model objec
 <<SOpticalPath>>=
 class SOpticalPath(Sfunction):
 
-    def __init__(self, idx, gmt, satm):
+    def __init__(self, idx, gmt, atm):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.info('Instantiate')
         self.idx = idx
         self.gmt = gmt
-        self.satm = satm
+        self.atm = atm
 	self.sensor = None
 @ %def idx sensor
 \paragraph{Start}
@@ -500,7 +508,7 @@ The message that triggers the call to the \emph{Start} method is
             self.sensor.reset()
             self.comm_matrix = {}
 
-        self.src>>tuple(filter(None,(self.gmt,self.sensor)))
+        self.src>>tuple(filter(None,(self.atm,self.gmt,self.sensor)))
 
         return "OP"+str(self.idx)
 @ %def src propagateThroughAtm exposure_start exposure_time
@@ -923,11 +931,10 @@ from . import driver
 <<dos.py>>=
 <<dos imports>>
 
-logging.basicConfig(level=logging.DEBUG)
-
 class DOS:
-    def __init__(self,path_to_config_dir):
+    def __init__(self,path_to_config_dir,verbose='DEBUG'):
         self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.setLevel(verbose)
 
         cfg_file = os.path.join(path_to_config_dir,'dos.yaml')
         self.logger.info('Reading config from %s',cfg_file)
@@ -1022,13 +1029,16 @@ def tie(self,drivers):
         self.data = drivers[d].inputs[io].data
         self.size = self.data.shape
 @
-The device parameters are loaded from the device parameter file and formatted
-into a message sent to CEO server.
+The device parameters are loaded from the device parameter file and the device
+is associated to the driver
 <<device to driver association>>=
 for k_d in self.drivers:
     d = self.drivers[k_d]
     device = os.path.join(path_to_config_dir,k_d+'.yaml')
     d.associate(device)
+@
+The device parameter are formatted into messages that will be used to
+communicate to the server.    
 <<Server device parameter loading and formatting>>=
 def associate(self,prm_file):
     with open(prm_file) as f:
@@ -1048,7 +1058,8 @@ def associate(self,prm_file):
                                        'miscellaneous_args':None})
         if prm['sensor']['class'] is not None:
             self.msg_args['Start']['sensor_args'].update(prm['sensor']['args'])
-        self.msg_args['Init'].update({'calibrations':prm['calibrations']})
+        if 'calibrations' in prm:
+            self.msg_args['Init'].update({'calibrations':prm['calibrations']})
         self.msg_args['Outputs']['outputs'] += [k_o for k_o in self.outputs]
 <<driver imports>>=
 from scipy import signal
@@ -1070,17 +1081,17 @@ def associate(self,prm_file):
 @
 Once the parameters are loaded and the drivers linked, we call the drivers [[start]]
 <<starting the drivers>>=
-self.__start__ = map(lambda x: x.start(), self.drivers.values())
+self.__start = map(lambda x: x.start(), self.drivers.values())
 <<starting the simulation>>=
 def start(self):
-    list(self.__start__)
+    list(self.__start)
 @
 and [[init]] methods:
 <<initializing the drivers>>=
-self.__init__ = map(lambda x: x.init(), self.drivers.values())
+self.__init = map(lambda x: x.init(), self.drivers.values())
 <<initializing the simulation>>=
 def init(self):
-    list(self.__init__)
+    list(self.__init)
 @
 Then the [[update]] and [[output]] methods are called successively for the total
 [[duration]] of the simulation.
@@ -1132,7 +1143,7 @@ drivers:
         destination: [device, device input name]
 @
 The [[drivers]] method are defined in the [[Driver]] class.
-<<Driver methods>>=
+<<Server methods>>=
 def start(self):
     self.logger.debug('Starting!')
     m = 'Start'
@@ -1198,19 +1209,40 @@ class Output(IO):
         IO.__init__(self,tag,size=size,lien=destination)
         self.sampling_rate = sampling_rate
     <<output linking>>
+@
+The driver module defines classes that are interfaced to devices either of the
+server side or on the client side.
 <<driver imports>>=
 import numpy as np
 import yaml
 import logging
 <<driver.py>>=
 <<driver imports>>
-logging.basicConfig(level=logging.DEBUG)
 <<IO>>
 <<Inputs>>
 <<Outputs>>
-class Server:
-    def __init__(self,tag,server,delay=0,sampling_rate=1,**kwargs):
+@
+All class must have the following methods: [[start]], [[init]], [[update]],
+[[output]] and [[terminate]].
+<<driver.py>>=
+class Driver:
+    def start(self):
+        pass
+    def init(self):
+        pass
+    def update(self):
+        pass
+    def output(self):
+        pass
+    def terminate(self):
+        pass
+@
+The [[Server]] class is the interface with the server where the devices are CEO objects.
+<<driver.py>>=
+class Server(Driver):
+    def __init__(self,tag,server,delay=0,sampling_rate=1,verbose='DEBUG',**kwargs):
         self.logger = logging.getLogger(tag)
+        self.logger.setLevel(verbose)
         self.tag           = tag
         self.server        = server
         self.delay         = delay
@@ -1234,15 +1266,17 @@ class Server:
                     'Outputs':{'outputs':[]},
                     'Terminate':{'args':None}}
 
-    <<Driver methods>>
+    <<Server methods>>
 
     <<Server device parameter loading and formatting>>
 @
-A driver can also be just to serve the client:
+The [[Client]] class is the interface with the client devices such as temporal controllers.
 <<driver.py>>=
-class Client():
-    def __init__(self,tag,delay=0,sampling_rate=1,**kwargs):
+class Client(Driver):
+    def __init__(self,tag,delay=0,sampling_rate=1,verbose='DEBUG',**kwargs):
         self.logger = logging.getLogger(tag)
+        self.logger.setLevel(verbose)
+
         self.tag           = tag
         self.delay         = delay
         self.sampling_rate = sampling_rate
@@ -1295,6 +1329,8 @@ def output(self,step):
 def terminate(self):
     self.logger.debug('Terminating!')
 @
+A special driver is the atmosphere driver that is used to instantiate an
+atmosphere object on CEO server
 
 \subsection{The broker}
 \label{sec:client-broker}
