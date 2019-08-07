@@ -97,7 +97,7 @@ import pickle
 import zlib
 import logging
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig()
 
 SIMCEOPATH = os.path.abspath(os.path.dirname(__file__))
 
@@ -161,6 +161,7 @@ class broker(threading.Thread):
         threading.Thread.__init__(self)
 
         self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.setLevel(logging.DEBUG)
         
         self.context = zmq.Context()
         self.socket = self.context.socket(zmq.REP)
@@ -415,14 +416,15 @@ The message that triggers the call to the \emph{Update} method is
 
 The \emph{SAtmosphere} class is the interface class between a CEO \emph{GmtAtmosphere} object and a \emph{Atmosphere} Simulink block.
 <<SAtmosphere>>=
-class _Atmosphere_(ceo.GmtAtmosphere):
-    def __init__(**kwargs):
-        super().__init__(self,**kwargs%)
+class _Atmosphere_():
+    def __init__(self,**kwargs):
+        print(kwargs)
+        self.__atm = ceo.GmtAtmosphere(**kwargs)
         self.N = kwargs['NXY_PUPIL']
         self.L = kwargs['L']
         self.delta = self.L/(self.N-1)
     def propagate(self,src):
-        super().ray_tracing(src,self.delta,self.N,self.delta,self.N,src.timeStamp)
+        self.__atm.ray_tracing(src,self.delta,self.N,self.delta,self.N,src.timeStamp)
 class SAtmosphere(Sfunction):
 
     def __init__(self, ops):
@@ -931,10 +933,12 @@ from . import driver
 <<dos.py>>=
 <<dos imports>>
 
+logging.basicConfig()
+
 class DOS:
     def __init__(self,path_to_config_dir,verbose='DEBUG'):
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.setLevel(verbose)
+        self.logger.setLevel(logging.DEBUG)
 
         cfg_file = os.path.join(path_to_config_dir,'dos.yaml')
         self.logger.info('Reading config from %s',cfg_file)
@@ -951,7 +955,7 @@ class DOS:
         <<starting the drivers>>
         <<initializing the drivers>>
         <<running the loop>>
-        <<terminating>>
+        <<terminating the drivers>>
 
     <<starting the simulation>>
 
@@ -959,20 +963,25 @@ class DOS:
 
     <<stepping through>>
 
+    <<terminating the simulation>>
+
     <<timing diagram>>
 @
 Each device must have a corresponding parameter file in the same directory than
 the configuration file.
 <<check parameter file existence>>=
 self.drivers = {}
+tau = 1/self.cfg['simulation']['sampling frequency']
 for d,v in self.cfg['drivers'].items():
     prm_file = os.path.join(path_to_config_dir,d+'.yaml')
     if os.path.isfile(prm_file):
         self.logger.info('New driver: %s',d)
         if 'server' in v and v['server'] is False:
-            self.drivers[d] = driver.Client(d,**v)
+            self.drivers[d] = driver.Client(tau,d,**v)
+        elif d=='atmosphere':
+            self.drivers[d] = driver.Atmosphere(tau,d,self.agent)
         else:
-            self.drivers[d] = driver.Server(d,self.agent,**v)
+            self.drivers[d] = driver.Server(tau,d,self.agent,**v)
     else:
         self.logger.warning('%s is missing!',prm_file)
 @
@@ -1051,6 +1060,7 @@ def associate(self,prm_file):
                 {k_i:v_i.data for k_i,v_i in self.inputs.items()})
     else:
         self.msg['class_id'] = 'OP'
+        prm['source'].update({'samplingTime':self.tau*self.sampling_rate})
         self.msg_args['Start'].update({'source_args':prm['source'],
                                        'sensor_class':prm['sensor']['class'],
                                        'sensor_args':{},
@@ -1079,6 +1089,8 @@ def associate(self,prm_file):
     else:
         raise Exception("System should be of the type 'transfer function' or 'zeros poles gains'")
 @
+Next we check if an atmosphere is define
+@
 Once the parameters are loaded and the drivers linked, we call the drivers [[start]]
 <<starting the drivers>>=
 self.__start = map(lambda x: x.start(), self.drivers.values())
@@ -1105,8 +1117,11 @@ def stepping(self):
         yield [x.update(l) for x in v] + [x.output(l) for x in v]
 @
 The simulation ends-up with calling the [[terminate]] methods.
-<<terminating>>=
-self.terminate = map(lambda x: x.terminate(), self.drivers.values())
+<<terminating the drivers>>=
+self.__terminate = map(lambda x: x.terminate(), self.drivers.values())
+<<terminating the simulation>>=
+def terminate(self):
+    list(self.__terminate)
 @
 
 \subsection{DOS driver}
@@ -1198,15 +1213,15 @@ class IO:
         self.lien = lien
 <<Inputs>>=
 class Input(IO):
-    def __init__(self,tag,size=0,origin=None):
-        IO.__init__(self,tag,size=size,lien=origin)
+    def __init__(self,tag,size=0,lien=None):
+        IO.__init__(self,tag,size=size,lien=lien)
     <<input linking>>
 @
 and [[Outputs]] classes.
 <<Outputs>>=
 class Output(IO):
-    def __init__(self,tag,size=0,sampling_rate=1,destination=None):
-        IO.__init__(self,tag,size=size,lien=destination)
+    def __init__(self,tag,size=0,sampling_rate=1,lien=None):
+        IO.__init__(self,tag,size=size,lien=lien)
         self.sampling_rate = sampling_rate
     <<output linking>>
 @
@@ -1218,6 +1233,7 @@ import yaml
 import logging
 <<driver.py>>=
 <<driver imports>>
+logging.basicConfig()
 <<IO>>
 <<Inputs>>
 <<Outputs>>
@@ -1226,13 +1242,16 @@ All class must have the following methods: [[start]], [[init]], [[update]],
 [[output]] and [[terminate]].
 <<driver.py>>=
 class Driver:
+    def __init__(self,tau,tag):
+        self.tau = tau
+        self.tag = tag
     def start(self):
         pass
     def init(self):
         pass
-    def update(self):
+    def update(self,_):
         pass
-    def output(self):
+    def output(self,_):
         pass
     def terminate(self):
         pass
@@ -1240,10 +1259,10 @@ class Driver:
 The [[Server]] class is the interface with the server where the devices are CEO objects.
 <<driver.py>>=
 class Server(Driver):
-    def __init__(self,tag,server,delay=0,sampling_rate=1,verbose='DEBUG',**kwargs):
+    def __init__(self,tau,tag,server,delay=0,sampling_rate=1,verbose='DEBUG',**kwargs):
+        Driver.__init__(self,tau,tag)
         self.logger = logging.getLogger(tag)
-        self.logger.setLevel(verbose)
-        self.tag           = tag
+        self.logger.setLevel(logging.DEBUG)
         self.server        = server
         self.delay         = delay
         self.sampling_rate = sampling_rate
@@ -1273,11 +1292,10 @@ class Server(Driver):
 The [[Client]] class is the interface with the client devices such as temporal controllers.
 <<driver.py>>=
 class Client(Driver):
-    def __init__(self,tag,delay=0,sampling_rate=1,verbose='DEBUG',**kwargs):
+    def __init__(self,tau,tag,delay=0,sampling_rate=1,verbose='DEBUG',**kwargs):
+        Driver.__init__(self,tau,tag)
         self.logger = logging.getLogger(tag)
-        self.logger.setLevel(verbose)
-
-        self.tag           = tag
+        self.logger.setLevel(logging.DEBUG)
         self.delay         = delay
         self.sampling_rate = sampling_rate
         self.inputs        = {}
@@ -1331,7 +1349,28 @@ def terminate(self):
 @
 A special driver is the atmosphere driver that is used to instantiate an
 atmosphere object on CEO server
+<<driver.py>>=
+class Atmosphere(Driver):
+    def __init__(self,tau,tag,server,verbose='DEBUG',**kwargs):
+        Driver.__init__(self,tau,tag)
+        self.logger = logging.getLogger(tag)
+        self.logger.setLevel(logging.DEBUG)
+        self.server = server
+        self.inputs = {}
+        self.outputs= {}
+        self.msg    = {'class_id':'ATM',
+                       'method_id':'Start',
+                       'args':{}}
+    def start(self):
+        self.server._send_(self.msg)
+        reply = self.server._recv_()
+        self.logger.info('%s',reply)
 
+    def associate(self,prm_file):
+        with open(prm_file) as f:
+            prm = yaml.load(f)
+        self.msg['args'].update(prm)
+@
 \subsection{The broker}
 \label{sec:client-broker}
 
@@ -1435,14 +1474,14 @@ def diagram(self):
             if not (len(m)==1 and m[0]=='delay'):
                 for ik in self.drivers[d].inputs:
                     data = self.drivers[d].inputs[ik]
-                    if data.origin is not None:
-                        main.edge(search_method(data.origin[0],'output'),
+                    if data.lien is not None:
+                        main.edge(search_method(data.lien[0],'output'),
                                   '{0}_{1}:{1}_update'.format(str(s),d))
                 for ok in self.drivers[d].outputs:
                     data = self.drivers[d].outputs[ok]
-                    if data.destination is not None:
+                    if data.lien is not None:
                         main.edge('{0}_{1}:{1}_output'.format(str(s),d),
-                                  search_method(data.destination[0],'update'))
+                                  search_method(data.lien[0],'update'))
 
     return sampling,main
 @
