@@ -162,7 +162,7 @@ class broker(threading.Thread):
 
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(logging.DEBUG)
-        
+
         self.context = zmq.Context()
         self.socket = self.context.socket(zmq.REP)
         self.address = "tcp://*:3650"
@@ -215,7 +215,7 @@ try:
     #msg = self.socket.recv()
     #jmsg = ubjson.loadb(msg)
     msg = self._recv_()
-    self.logger.debug('Received: %s',msg)
+#    self.logger.debug('Received: %s',msg)
 except Exception as E:
     #print("Error raised by ubjson.loadb by that does not stop us!")
     print(msg)
@@ -255,7 +255,6 @@ except Exception as E:
 The dictionary--like call is implemented with 
 <<broker get item>>=
 def __getitem__(self,key):
-    self.logger.debug('key: %s',key)
     if key=="GMT":
         return self.sgmt
     elif key=="ATM":
@@ -428,17 +427,20 @@ class _Atmosphere_():
 class SAtmosphere(Sfunction):
 
     def __init__(self, ops):
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.setLevel(logging.INFO)
         self.atm = None
 
     def Start(self, **kwargs):
         print("\n@(SAtmosphere:Start)>")
-        self.atm = _Atmosphere_( **kwargs )
-        return b"ATM"
+        #self.atm = _Atmosphere_( **kwargs )
+        self.atm = ceo.GmtAtmosphere(**kwargs)
+        return "ATM"
 
     def Terminate(self, args=None):
-        print("\n@(SAtmosphere:Terminate)>")
+        self.logger.info("Atmosphere deleted")
         self.atm = None
-        return b"Atmosphere deleted!"
+        return "Atmosphere deleted!"
 
     def InitializeConditions(self, args=None):
         pass
@@ -460,6 +462,7 @@ class SOpticalPath(Sfunction):
 
     def __init__(self, idx, gmt, atm):
         self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.setLevel(logging.DEBUG)
         self.logger.info('Instantiate')
         self.idx = idx
         self.gmt = gmt
@@ -486,7 +489,7 @@ The message that triggers the call to the \emph{Start} method is
 <<SOpticalPath>>=
     def Start(self,source_args=None, sensor_class=None, sensor_args=None, 
               calibration_source_args=None, miscellaneous_args=None):
-        self.logger.info('Start')
+        self.logger.info(logging.debug)
         self.pssn_data = None
         #self.propagateThroughAtm = miscellaneous_args['propagate_through_atmosphere']
         self.src = ceo.Source( **source_args )
@@ -530,7 +533,7 @@ The message that triggers the call to the \emph{Terminate} method is
 @ 
 <<SOpticalPath>>=
     def Terminate(self, args=None):
-        print("\n@(SOpticalPath:Terminate)>")
+        self.logger.info("OpticalPath deleted")
         return b"OpticalPath deleted!"
 @
 \paragraph{Update}
@@ -548,6 +551,7 @@ The message that triggers the call to the \emph{Update} method is
 @ 
 <<SOpticalPath>>=
     def Update(self, inputs=None):
+        self.logger.debug('src time stamp: %f',self.src.timeStamp)
         +self.src
         #self.src.reset()
         #self.gmt.propagate(self.src)
@@ -580,7 +584,6 @@ The message that triggers the call to the \emph{Outputs} method is
             for element in outputs:
                 doutputs[element] = self[element]
             self.sensor.reset()
-        self.logger.debug('outputs: %s',doutputs)
         return doutputs
 @ 
 and the dictionnary implementation is
@@ -616,7 +619,6 @@ and the dictionnary implementation is
             return pssn
         else:
             c = self.comm_matrix[key].dot( self.sensor.Data ).ravel()
-            self.logger.debug('C= %s',c)
             return c.tolist()
 @
 \paragraph{InitializeConditions}
@@ -910,13 +912,17 @@ A [[dos]] simulation is defined with a parameter file [[dos.yaml]].
 <<dos simulation section>>
 <<dos drivers section>>
 @
+\subsection{Simulation}
+\label{sec:simulation}
+
+
 The first section is [[simulation]] where the simulation sampling frequency and
 duration is given as well as the address of the SIMCEO server.
 <<dos simulation section>>=
 simulation:
   sampling frequency: 100 # [Hertz]
   duration: 1 # [seconds]
-  simceo server:
+  server:
     IP: 127.0.0.1
 @
 
@@ -936,9 +942,9 @@ from . import driver
 logging.basicConfig()
 
 class DOS:
-    def __init__(self,path_to_config_dir,verbose='DEBUG'):
+    def __init__(self,path_to_config_dir,verbose=logging.INFO):
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(verbose)
 
         cfg_file = os.path.join(path_to_config_dir,'dos.yaml')
         self.logger.info('Reading config from %s',cfg_file)
@@ -977,43 +983,46 @@ for d,v in self.cfg['drivers'].items():
     if os.path.isfile(prm_file):
         self.logger.info('New driver: %s',d)
         if 'server' in v and v['server'] is False:
-            self.drivers[d] = driver.Client(tau,d,**v)
+            self.drivers[d] = driver.Client(tau,d,
+                                            verbose=verbose,**v)
         elif d=='atmosphere':
-            self.drivers[d] = driver.Atmosphere(tau,d,self.agent)
+            self.drivers[d] = driver.Atmosphere(tau,d,self.agent,
+                                                verbose=verbose)
         else:
-            self.drivers[d] = driver.Server(tau,d,self.agent,**v)
+            self.drivers[d] = driver.Server(tau,d,self.agent,
+                                            verbose=verbose,**v)
     else:
         self.logger.warning('%s is missing!',prm_file)
 @
-For an optical sensor, the [[device name.yaml]] file has 3 sections: source,
-sensor and calibrations.
-Each section list the arguments of CEO methods.
-<<device name.yaml>>=
-source:
-  photometric_band: R+I
-  zenith:
-    value: 8
-    units: arcmin
-  azimuth:
-    value: 66
-    units: degree
-  magnitude: 0
-  rays_box_size: 25.5000
-  rays_box_sampling: 769
-  rays_origin: [0,0,25]
-sensor:
-  class: GeometricShackHartmann
-  args:
-    N_SIDE_LENSLET: 20
-  calibrate args: null
-calibrations:
-  M2TT:
-    method_id: calibrate
-    args:
-      mirror: M2
-      mode: segment tip-tilt
-      stroke: 1e-6
-@
+% For an optical sensor, the [[device name.yaml]] file has 3 sections: source,
+% sensor and calibrations.
+% Each section list the arguments of CEO methods.
+% <device name.yaml>=
+% source:
+%   photometric_band: R+I
+%   zenith:
+%     value: 8
+%     units: arcmin
+%   azimuth:
+%     value: 66
+%     units: degree
+%   magnitude: 0
+%   rays_box_size: 25.5000
+%   rays_box_sampling: 769
+%   rays_origin: [0,0,25]
+% sensor:
+%   class: GeometricShackHartmann
+%   args:
+%     N_SIDE_LENSLET: 20
+%   calibrate args: null
+% calibrations:
+%   M2TT:
+%     method_id: calibrate
+%     args:
+%       mirror: M2
+%       mode: segment tip-tilt
+%       stroke: 1e-6
+% @
 Once each driver is instantiated, their inputs and outputs are tied
 <<linking the drivers IO>>=
 for k_d in self.drivers:
@@ -1037,7 +1046,7 @@ def tie(self,drivers):
 <<IO linking>>
         self.data = drivers[d].inputs[io].data
         self.size = self.data.shape
-@
+@ %def tie
 The device parameters are loaded from the device parameter file and the device
 is associated to the driver
 <<device to driver association>>=
@@ -1068,8 +1077,8 @@ def associate(self,prm_file):
                                        'miscellaneous_args':None})
         if prm['sensor']['class'] is not None:
             self.msg_args['Start']['sensor_args'].update(prm['sensor']['args'])
-        if 'calibrations' in prm:
-            self.msg_args['Init'].update({'calibrations':prm['calibrations']})
+        if 'calibrate args' in prm:
+            self.msg_args['Init'].update(prm['calibrate args'])
         self.msg_args['Outputs']['outputs'] += [k_o for k_o in self.outputs]
 <<driver imports>>=
 from scipy import signal
@@ -1087,7 +1096,8 @@ def associate(self,prm_file):
                                   system['transfer function']['poles'],
                                   system['transfer function']['gain'])
     else:
-        raise Exception("System should be of the type 'transfer function' or 'zeros poles gains'")
+        raise Exception("System should be of the type "+\
+                        "'transfer function' or 'zeros poles gains'")
 @
 Next we check if an atmosphere is define
 @
@@ -1140,7 +1150,7 @@ Then after [[delay]] samples, the [[update]] method is called at the given
 [[sampling rate]] reading its inputs.
 Each device inputs is defined by a name and has for properties either a size or
 a list with the origin device and origin device output name.
-The [[update]] method is followed by the [[output]] method
+The [[update]] method is followed by the [[output]] method.
 Each device outputs is defined by a name and has for properties a given sampling frequency and either a size or a list with the input destination device and destination device input name.
 <<dos drivers section>>=
 drivers:
@@ -1157,76 +1167,8 @@ drivers:
         size: 0
         destination: [device, device input name]
 @
-The [[drivers]] method are defined in the [[Driver]] class.
-<<Server methods>>=
-def start(self):
-    self.logger.debug('Starting!')
-    m = 'Start'
-    <<client-server exchange>>
-    self.msg['class_id'] = reply
-def init(self):
-    self.logger.debug('Initializing!')
-    m = 'Init'
-    <<client-server exchange>>
-def update(self,step):
-    if step>=self.delay and step%self.sampling_rate==0:
-        self.logger.debug('Updating!')
-        m = 'Update'
-        <<client-server exchange>>
-def output(self,step):
-    if step>=self.delay:
-        for k,v in self.outputs.items():
-            if step%v.sampling_rate==0:
-                self.logger.debug('Outputing %s!',k)
-                m = 'Outputs'
-                <<client-server exchange>>
-                self.logger.debug("Reply: %s",reply)
-                for k,v in reply.items():
-                    self.outputs[k].data[...] = np.asarray(v).reshape(self.outputs[k].size)
-def terminate(self):
-    self.logger.debug('Terminating!')
-    m = 'Terminate'
-    <<client-server exchange>>
-
-@
-Each method communicates with the server using the same protocol
-<<client-server exchange>>=
-self.msg['method_id'] = m
-self.msg['args'].update(self.msg_args[m])
-self.server._send_(self.msg)
-self.msg['method_id'] = ''
-self.msg['args'].clear()
-reply = self.server._recv_()
-@
-\subsubsection{Driver inputs/outputs}
-\label{sec:driver-io}
-
-
-Inputs and outputs are saved as dictionaries with the input and output names as
-keys and the values being an instance of the [[Inputs]] and [[Outputs]] classes.
-<<IO>>=
-class IO:
-    def __init__(self,tag,size=0, lien=None):
-        self.logger = logging.getLogger(tag)
-        self.size = size
-        self.data = np.zeros(size)
-        self.lien = lien
-<<Inputs>>=
-class Input(IO):
-    def __init__(self,tag,size=0,lien=None):
-        IO.__init__(self,tag,size=size,lien=lien)
-    <<input linking>>
-@
-and [[Outputs]] classes.
-<<Outputs>>=
-class Output(IO):
-    def __init__(self,tag,size=0,sampling_rate=1,lien=None):
-        IO.__init__(self,tag,size=size,lien=lien)
-        self.sampling_rate = sampling_rate
-    <<output linking>>
-@
 The driver module defines classes that are interfaced to devices either of the
-server side or on the client side.
+server or on the client.
 <<driver imports>>=
 import numpy as np
 import yaml
@@ -1255,14 +1197,48 @@ class Driver:
         pass
     def terminate(self):
         pass
-@
+@ %def Driver
+
+\subsubsection{Driver inputs/outputs}
+\label{sec:driver-io}
+
+Inputs and outputs are saved as dictionaries with the input and output names as
+keys and the values being an instance of the [[Inputs]] and [[Outputs]] classes.
+<<IO>>=
+class IO:
+    def __init__(self,tag,size=0, lien=None):
+        self.logger = logging.getLogger(tag)
+        self.size = size
+        self.data = np.zeros(size)
+        self.lien = lien
+@ %def IO
+<<Inputs>>=
+class Input(IO):
+    def __init__(self,tag,size=0,lien=None):
+        IO.__init__(self,tag,size=size,lien=lien)
+    <<input linking>>
+@ %def Input
+and [[Outputs]] classes.
+<<Outputs>>=
+class Output(IO):
+    def __init__(self,tag,size=0,sampling_rate=1,lien=None):
+        IO.__init__(self,tag,size=size,lien=lien)
+        self.sampling_rate = sampling_rate
+    <<output linking>>
+@ %def Output
+        
+\subsubsection{Server}
+\label{sec:driver.server}
+
+
 The [[Server]] class is the interface with the server where the devices are CEO objects.
 <<driver.py>>=
 class Server(Driver):
-    def __init__(self,tau,tag,server,delay=0,sampling_rate=1,verbose='DEBUG',**kwargs):
+    def __init__(self,tau,tag,server,delay=0,sampling_rate=1,
+             verbose=logging.INFO,**kwargs):
         Driver.__init__(self,tau,tag)
         self.logger = logging.getLogger(tag)
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(verbose)
         self.server        = server
         self.delay         = delay
         self.sampling_rate = sampling_rate
@@ -1288,14 +1264,61 @@ class Server(Driver):
     <<Server methods>>
 
     <<Server device parameter loading and formatting>>
+@ %def Server       
+The inherited [[Server]] method are:
+<<Server methods>>=
+def start(self):
+    self.logger.debug('Starting!')
+    m = 'Start'
+    <<client-server exchange>>
+    self.msg['class_id'] = reply
+def init(self):
+    self.logger.debug('Initializing!')
+    m = 'Init'
+    <<client-server exchange>>
+def update(self,step):
+    if step>=self.delay and step%self.sampling_rate==0:
+        self.logger.debug('Updating!')
+        m = 'Update'
+        <<client-server exchange>>
+def output(self,step):
+    if step>=self.delay:
+            m = 'Outputs'
+            if self.msg_args[m]['outputs']:
+                <<client-server exchange>>
+                self.logger.debug("Reply: %s",reply)
+                for k,v in self.outputs.items():
+                    if step%v.sampling_rate==0:
+                        self.logger.debug('Outputing %s!',k)
+                        v.data[...] = \
+                                np.asarray(reply[k]).reshape(self.outputs[k].size)
+def terminate(self):
+    self.logger.debug('Terminating!')
+    m = 'Terminate'
+    <<client-server exchange>>
+    self.logger.info(reply)
 @
+Each method communicates with the server using the same protocol
+<<client-server exchange>>=
+self.msg['method_id'] = m
+self.msg['args'].update(self.msg_args[m])
+self.server._send_(self.msg)
+self.msg['method_id'] = ''
+self.msg['args'].clear()
+reply = self.server._recv_()
+@
+\subsubsection{Client}
+\label{sec:driver.client}
+
+
 The [[Client]] class is the interface with the client devices such as temporal controllers.
 <<driver.py>>=
 class Client(Driver):
-    def __init__(self,tau,tag,delay=0,sampling_rate=1,verbose='DEBUG',**kwargs):
+    def __init__(self,tau,tag,delay=0,sampling_rate=1,
+                 verbose=logging.INFO,**kwargs):
         Driver.__init__(self,tau,tag)
         self.logger = logging.getLogger(tag)
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(verbose)
         self.delay         = delay
         self.sampling_rate = sampling_rate
         self.inputs        = {}
@@ -1315,7 +1338,7 @@ class Client(Driver):
     <<Client methods>>
 
     <<Client device parameter loading and formatting>>
-@
+@ %def Client
 <<Client methods>>=
 def start(self):
     self.logger.debug('Starting!')
@@ -1341,20 +1364,25 @@ def output(self,step):
                 a = 0
                 for k in self.outputs:
                     b = a + self.outputs[k].data.size
-                    self.outputs[k].data[...] = self.__yout[0,a:b].reshape(self.outputs[k].size)
+                    self.outputs[k].data[...] = \
+                                self.__yout[0,a:b].reshape(self.outputs[k].size)
                     a = b
 
 def terminate(self):
     self.logger.debug('Terminating!')
 @
+\subsubsection{Atmosphere}
+\label{sec:driver.atmosphere}
+
+
 A special driver is the atmosphere driver that is used to instantiate an
 atmosphere object on CEO server
 <<driver.py>>=
 class Atmosphere(Driver):
-    def __init__(self,tau,tag,server,verbose='DEBUG',**kwargs):
+    def __init__(self,tau,tag,server,verbose=logging.INFO,**kwargs):
         Driver.__init__(self,tau,tag)
         self.logger = logging.getLogger(tag)
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(verbose)
         self.server = server
         self.inputs = {}
         self.outputs= {}
@@ -1366,11 +1394,18 @@ class Atmosphere(Driver):
         reply = self.server._recv_()
         self.logger.info('%s',reply)
 
+    def terminate(self):
+        self.server._send_({'class_id':'ATM',
+                            'method_id':'Terminate',
+                            'args':{'args':None}})
+        reply = self.server._recv_()
+        self.logger.info('%s',reply)
+
     def associate(self,prm_file):
         with open(prm_file) as f:
             prm = yaml.load(f)
         self.msg['args'].update(prm)
-@
+@ %def Atmosphere
 \subsection{The broker}
 \label{sec:client-broker}
 
@@ -1573,7 +1608,7 @@ classdef (Sealed=true) broker < handle
         <<instanciation and retrieval>>
 
         <<request and reply>>
-g
+
         <<reset ZMQ socket>>
 
         <<time spent>>
