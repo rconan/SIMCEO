@@ -993,7 +993,7 @@ Each device must have a corresponding parameter file in the same directory than
 the configuration file.
 <<check parameter file existence>>=
 tau = 1/self.cfg['simulation']['sampling frequency']
-self.slogs = Logs(tau)
+self.logs = Logs(tau)
 self.drivers = {}
 for d,v in self.cfg['drivers'].items():
     prm_file = os.path.join(path_to_config_dir,d+'.yaml')
@@ -1001,14 +1001,14 @@ for d,v in self.cfg['drivers'].items():
         self.logger.info('New driver: %s',d)
         if 'server' in v and v['server'] is False:
             self.drivers[d] = driver.Client(tau,d,
-                                            self.slogs,
+                                            self.logs,
                                             verbose=verbose,**v)
         elif d=='atmosphere':
             self.drivers[d] = driver.Atmosphere(tau,d,self.agent,
                                                 verbose=verbose)
         else:
             self.drivers[d] = driver.Server(tau,d,
-                                            self.slogs,
+                                            self.logs,
                                             self.agent,
                                             verbose=verbose,**v)
     else:
@@ -1266,7 +1266,7 @@ class Output(IO):
 The [[Server]] class is the interface with the server where the devices are CEO objects.
 <<driver.py>>=
 class Server(Driver):
-    def __init__(self,tau,tag,slogs,server,delay=0,sampling_rate=1,
+    def __init__(self,tau,tag,logs,server,delay=0,sampling_rate=1,
              verbose=logging.INFO,**kwargs):
         <<commom server/client driver>>
         self.server        = server
@@ -1300,8 +1300,8 @@ if 'outputs' in kwargs:
     for k,v in kwargs['outputs'].items():
         self.logger.info('New output: %s',k)
         if 'logs' in v:
-            slogs.add(tag,k,v['logs']['decimation'])
-            v['logs'] = slogs.entries[tag][k]
+            logs.add(tag,k,v['logs']['decimation'])
+            v['logs'] = logs.entries[tag][k]
             self.logger.info('Output logged in!')
         self.outputs[k] = Output(k,**v)
 @
@@ -1359,7 +1359,7 @@ reply = self.server._recv_()
 The [[Client]] class is the interface with the client devices such as temporal controllers.
 <<driver.py>>=
 class Client(Driver):
-    def __init__(self,tau,tag,slogs,delay=0,sampling_rate=1,
+    def __init__(self,tau,tag,logs,delay=0,sampling_rate=1,
                  verbose=logging.INFO,**kwargs):
         <<commom server/client driver>>
         self.system = None
