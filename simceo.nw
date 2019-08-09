@@ -897,6 +897,9 @@ A [[dos]] simulation is defined with a parameter file [[dos.yaml]].
 <<dos.yaml>>=
 <<dos simulation section>>
 <<dos drivers section>>
+<<__init__.py>>=
+from .dos import DOS
+from . import driver
 @
 \subsection{Simulation}
 \label{sec:simulation}

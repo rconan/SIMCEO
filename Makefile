@@ -2,13 +2,14 @@ NOWEBPATH	= /usr
 WEAVE   	= $(NOWEBPATH)/bin/noweave
 TANGLE    	= $(NOWEBPATH)/bin/notangle
 
-all: python dosapi doc
-python: simceo.nw simceo.py
+all: server client doc
+server: simceo.nw simceo.py
 	mkdir -p calibration_dbs
-dosapi:
+client:
 	mkdir -p etc
 	mkdir -p dos
 	$(TANGLE) -Rdos.yaml simceo.nw > etc/dos.yaml
+	$(TANGLE) -R__init__.py simceo.nw > dos/__init__.py
 	$(TANGLE) -Rdos.py simceo.nw > dos/dos.py
 	$(TANGLE) -Rdriver.py simceo.nw > dos/driver.py
 
