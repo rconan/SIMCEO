@@ -9,7 +9,6 @@ pythonclient:
 	$(TANGLE) -Rsimceoclient.py simceo.nw > simceoclient.py
 dosapi: 
 	$(TANGLE) -Rdos.yaml simceo.nw > etc/dos/dos.yaml
-	$(TANGLE) -R"device name.yaml" simceo.nw > "etc/dos/device name.yaml"
 	$(TANGLE) -Rdos.py simceo.nw > dos/dos.py
 	$(TANGLE) -Rdriver.py simceo.nw > dos/driver.py
 matlab: simceo.nw maskdoc

@@ -156,12 +156,13 @@ It inherits from the \emph{threading.Thread} class.
 <<broker>>=
 class broker(threading.Thread):
 
-    def __init__(self):
+    def __init__(self, verbose=logging.INFO):
 
         threading.Thread.__init__(self)
 
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.setLevel(logging.DEBUG)
+        self.verbose = verbose
+        self.logger.setLevel(self.verbose)
 
         self.context = zmq.Context()
         self.socket = self.context.socket(zmq.REP)
@@ -172,8 +173,8 @@ class broker(threading.Thread):
         self.ops = []
         self.n_op = 0
         self.currentTime = 0.0
-        self.satm = SAtmosphere(self.ops)
-        self.sgmt = SGMT(self.ops, self.satm)
+        self.satm = SAtmosphere(self.ops,verbose=self.verbose)
+        self.sgmt = SGMT(self.ops, self.satm, verbose=self.verbose)
 
     def __del__(self):
 
@@ -250,7 +251,7 @@ except Exception as E:
     traceback.print_exc()
     print("@(broker)> Recovering gracefully...")
     class_id = ""
-    args_out = b"The server has failed!"
+    args_out = "The server has failed!"
 @ 
 The dictionary--like call is implemented with 
 <<broker get item>>=
@@ -266,7 +267,8 @@ def __getitem__(self,key):
         else:
             self.ops.append( SOpticalPath( len(self.ops) ,
                                            self.sgmt.gmt ,
-                                           self.satm.atm ) )            
+                                           self.satm.atm ,
+                                           verbose=self.verbose) )            
             self.n_op = len(self.ops)
             return self.ops[-1]
     elif key=='testComm':
@@ -325,15 +327,16 @@ The \emph{SGMT} class is the interface class between a CEO \emph{GMT\_MX} object
 <<SGMT>>=
 class SGMT(Sfunction):
 
-    def __init__(self, ops, satm):
+    def __init__(self, ops, satm, verbose=logging.INFO):
         self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.setLevel(verbose)
         self.logger.info('Instantiate')
         self.gmt  = ceo.GMT_MX()
 
     def Terminate(self, args=None):
         self.logger.info('Terminate')
         self.gmt = ceo.GMT_MX()
-        return b"GMT deleted!"
+        return "GMT deleted!"
 @
 
 \paragraph{Start}
@@ -426,9 +429,9 @@ class _Atmosphere_():
         self.__atm.ray_tracing(src,self.delta,self.N,self.delta,self.N,src.timeStamp)
 class SAtmosphere(Sfunction):
 
-    def __init__(self, ops):
+    def __init__(self, ops, verbose=logging.INFO):
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.setLevel(logging.INFO)
+        self.logger.setLevel(verbose)
         self.atm = None
 
     def Start(self, **kwargs):
@@ -460,9 +463,9 @@ The \emph{SOpticalClass} gathers a source object \emph{src}, the GMT model objec
 <<SOpticalPath>>=
 class SOpticalPath(Sfunction):
 
-    def __init__(self, idx, gmt, atm):
+    def __init__(self, idx, gmt, atm, verbose=logging.INFO):
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(verbose)
         self.logger.info('Instantiate')
         self.idx = idx
         self.gmt = gmt
@@ -534,7 +537,7 @@ The message that triggers the call to the \emph{Terminate} method is
 <<SOpticalPath>>=
     def Terminate(self, args=None):
         self.logger.info("OpticalPath deleted")
-        return b"OpticalPath deleted!"
+        return "OpticalPath deleted!"
 @
 \paragraph{Update}
 
@@ -936,13 +939,17 @@ import logging
 import threading
 import numpy as np
 from . import driver
+from simceo import Timer
 <<dos.py>>=
 <<dos imports>>
 
 logging.basicConfig()
 
-class DOS:
+class DOS(threading.Thread):
     def __init__(self,path_to_config_dir,verbose=logging.INFO):
+
+        threading.Thread.__init__(self)
+
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(verbose)
 
@@ -955,6 +962,7 @@ class DOS:
 
         self.N_SAMPLE = int(self.cfg['simulation']['sampling frequency']*
                             self.cfg['simulation']['duration'])
+        self.__k_step = 0
         <<check parameter file existence>>
         <<linking the drivers IO>>
         <<device to driver association>>
@@ -962,34 +970,46 @@ class DOS:
         <<initializing the drivers>>
         <<running the loop>>
         <<terminating the drivers>>
-
-    <<starting the simulation>>
+        self.logger.info('Simulation setup for a duration of {0}s @ {1}Hz ({2} steps)!'.format(
+            self.cfg['simulation']['duration'],
+            self.cfg['simulation']['sampling frequency'],
+            self.N_SAMPLE))
 
     <<initializing the simulation>>
 
     <<stepping through>>
 
+    <<running the simulation>>
+
     <<terminating the simulation>>
 
     <<timing diagram>>
+
+    @property
+    def pctComplete(self):
+        return round(100*self.__k_step/(self.N_SAMPLE-1))
 @
 Each device must have a corresponding parameter file in the same directory than
 the configuration file.
 <<check parameter file existence>>=
-self.drivers = {}
 tau = 1/self.cfg['simulation']['sampling frequency']
+self.slogs = Logs(tau)
+self.drivers = {}
 for d,v in self.cfg['drivers'].items():
     prm_file = os.path.join(path_to_config_dir,d+'.yaml')
     if os.path.isfile(prm_file):
         self.logger.info('New driver: %s',d)
         if 'server' in v and v['server'] is False:
             self.drivers[d] = driver.Client(tau,d,
+                                            self.slogs,
                                             verbose=verbose,**v)
         elif d=='atmosphere':
             self.drivers[d] = driver.Atmosphere(tau,d,self.agent,
                                                 verbose=verbose)
         else:
-            self.drivers[d] = driver.Server(tau,d,self.agent,
+            self.drivers[d] = driver.Server(tau,d,
+                                            self.slogs,
+                                            self.agent,
                                             verbose=verbose,**v)
     else:
         self.logger.warning('%s is missing!',prm_file)
@@ -1113,6 +1133,8 @@ and [[init]] methods:
 self.__init = map(lambda x: x.init(), self.drivers.values())
 <<initializing the simulation>>=
 def init(self):
+    self.logger.info('Initializing')
+    list(self.__start)
     list(self.__init)
 @
 Then the [[update]] and [[output]] methods are called successively for the total
@@ -1125,12 +1147,21 @@ def stepping(self):
     for l in range(self.N_SAMPLE):
         self.logger.debug('Step #%d',l)
         yield [x.update(l) for x in v] + [x.output(l) for x in v]
+<<running the simulation>>=
+def run(self):
+    self.init()
+    self.logger.info('Running')
+    with Timer():
+        for self.__k_step in range(self.N_SAMPLE):
+            next(self.step)
+    self.terminate()
 @
 The simulation ends-up with calling the [[terminate]] methods.
 <<terminating the drivers>>=
 self.__terminate = map(lambda x: x.terminate(), self.drivers.values())
 <<terminating the simulation>>=
 def terminate(self):
+    self.logger.info('Terminating')
     list(self.__terminate)
 @
 
@@ -1206,23 +1237,24 @@ Inputs and outputs are saved as dictionaries with the input and output names as
 keys and the values being an instance of the [[Inputs]] and [[Outputs]] classes.
 <<IO>>=
 class IO:
-    def __init__(self,tag,size=0, lien=None):
+    def __init__(self,tag,size=0, lien=None, logs=None):
         self.logger = logging.getLogger(tag)
         self.size = size
         self.data = np.zeros(size)
         self.lien = lien
+        self.logs = logs
 @ %def IO
 <<Inputs>>=
 class Input(IO):
-    def __init__(self,tag,size=0,lien=None):
-        IO.__init__(self,tag,size=size,lien=lien)
+    def __init__(self,*args,**kwargs):
+        IO.__init__(self,*args,**kwargs)
     <<input linking>>
 @ %def Input
 and [[Outputs]] classes.
 <<Outputs>>=
 class Output(IO):
-    def __init__(self,tag,size=0,sampling_rate=1,lien=None):
-        IO.__init__(self,tag,size=size,lien=lien)
+    def __init__(self,*args,sampling_rate=1,**kwargs):
+        IO.__init__(self,*args,**kwargs)
         self.sampling_rate = sampling_rate
     <<output linking>>
 @ %def Output
@@ -1234,24 +1266,10 @@ class Output(IO):
 The [[Server]] class is the interface with the server where the devices are CEO objects.
 <<driver.py>>=
 class Server(Driver):
-    def __init__(self,tau,tag,server,delay=0,sampling_rate=1,
+    def __init__(self,tau,tag,slogs,server,delay=0,sampling_rate=1,
              verbose=logging.INFO,**kwargs):
-        Driver.__init__(self,tau,tag)
-        self.logger = logging.getLogger(tag)
-        self.logger.setLevel(verbose)
+        <<commom server/client driver>>
         self.server        = server
-        self.delay         = delay
-        self.sampling_rate = sampling_rate
-        self.inputs        = {}
-        if 'inputs' in kwargs:
-            for k,v in kwargs['inputs'].items():
-                self.logger.info('New input: %s',k)
-                self.inputs[k] = Input(k,**v)
-        self.outputs       = {}
-        if 'outputs' in kwargs:
-            for k,v in kwargs['outputs'].items():
-                self.logger.info('New output: %s',k)
-                self.outputs[k] = Output(k,**v)
         self.msg = {'class_id':'',
                     'method_id':'',
                     'args':{}}
@@ -1264,6 +1282,28 @@ class Server(Driver):
     <<Server methods>>
 
     <<Server device parameter loading and formatting>>
+@
+with
+<<commom server/client driver>>=
+Driver.__init__(self,tau,tag)
+self.logger = logging.getLogger(tag)
+self.logger.setLevel(verbose)
+self.delay         = delay
+self.sampling_rate = sampling_rate
+self.inputs        = {}
+if 'inputs' in kwargs:
+    for k,v in kwargs['inputs'].items():
+        self.logger.info('New input: %s',k)
+        self.inputs[k] = Input(k,**v)
+self.outputs       = {}
+if 'outputs' in kwargs:
+    for k,v in kwargs['outputs'].items():
+        self.logger.info('New output: %s',k)
+        if 'logs' in v:
+            slogs.add(tag,k,v['logs']['decimation'])
+            v['logs'] = slogs.entries[tag][k]
+        self.outputs[k] = Output(k,**v)
+@
 @ %def Server       
 The inherited [[Server]] method are:
 <<Server methods>>=
@@ -1292,6 +1332,10 @@ def output(self,step):
                         self.logger.debug('Outputing %s!',k)
                         v.data[...] = \
                                 np.asarray(reply[k]).reshape(self.outputs[k].size)
+                    if v.logs is not None:
+                        self.logger.debug('LOGGING')
+                        v.logs.add(v.data.copy())
+
 def terminate(self):
     self.logger.debug('Terminating!')
     m = 'Terminate'
@@ -1314,23 +1358,9 @@ reply = self.server._recv_()
 The [[Client]] class is the interface with the client devices such as temporal controllers.
 <<driver.py>>=
 class Client(Driver):
-    def __init__(self,tau,tag,delay=0,sampling_rate=1,
+    def __init__(self,tau,tag,slogs,delay=0,sampling_rate=1,
                  verbose=logging.INFO,**kwargs):
-        Driver.__init__(self,tau,tag)
-        self.logger = logging.getLogger(tag)
-        self.logger.setLevel(verbose)
-        self.delay         = delay
-        self.sampling_rate = sampling_rate
-        self.inputs        = {}
-        if 'inputs' in kwargs:
-            for k,v in kwargs['inputs'].items():
-                self.logger.info('New input: %s',k)
-                self.inputs[k] = Input(k,**v)
-        self.outputs       = {}
-        if 'outputs' in kwargs:
-            for k,v in kwargs['outputs'].items():
-                self.logger.info('New output: %s',k)
-                self.outputs[k] = Output(k,**v)
+        <<commom server/client driver>>
         self.system = None
         self.__xout = np.zeros(0)
         self.__yout = np.zeros(0)
@@ -1406,6 +1436,31 @@ class Atmosphere(Driver):
             prm = yaml.load(f)
         self.msg['args'].update(prm)
 @ %def Atmosphere
+
+\subsection{Logs}
+\label{sec:logs}
+
+Driver output data can be logged in using the [[Logs]] class:
+<<dos.py>>=
+class Entry:
+    def __init__(self,tau,decimation):
+        self.tau = tau
+        self.decimation = decimation
+        self.data = []
+    def add(self,value):
+        self.data += [value]
+    @property
+    def timeSeries(self):
+        time   = np.arange(len(self.data))*self.decimation*self.tau
+        values = np.vstack(self.data) if self.data[0].ndim<2 else np.dstack(self.data)
+        return time,values
+class Logs:
+    def __init__(self,sampling_time):
+        self.sampling_time = sampling_time
+        self.entries = {}
+    def add(self,driver,output,decimation):
+        self.entries[driver] = {output:Entry(self.sampling_time,decimation)}
+@
 \subsection{The broker}
 \label{sec:client-broker}
 
@@ -1441,6 +1496,18 @@ class broker:
         pobj = zlib.decompress(zobj)
         return pickle.loads(pobj)
 
+@
+
+\subsection{Main}
+\label{sec:dos.main}
+
+<<dos.py>>=
+
+if __name__=="__main__":
+
+    dospath = sys.argv[1]
+    sim = DOS(dospath)
+    sim.run()
 @
 
 \subsection{Timing diagram}
