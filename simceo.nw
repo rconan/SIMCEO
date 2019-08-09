@@ -959,8 +959,6 @@ class DOS(threading.Thread):
             self.cfg['simulation']['sampling frequency'],
             self.N_SAMPLE))
 
-        self._start()
-
     <<starting the simulation>>
 
     <<initializing the simulation>>
@@ -1124,8 +1122,8 @@ Once the parameters are loaded and the drivers linked, we call the drivers [[sta
 <<starting the drivers>>=
 self.__start = map(lambda x: x.start(), self.drivers.values())
 <<starting the simulation>>=
-def _start(self):
-    self.logger.info('Starting')
+def push(self):
+    self.logger.info('Pushing configuration to server')
     list(self.__start)
 @
 and [[init]] methods:
@@ -1148,6 +1146,7 @@ def stepping(self):
         yield [x.update(l) for x in v] + [x.output(l) for x in v]
 <<running the simulation>>=
 def run(self):
+    self.push()
     self.init()
     self.logger.info('Running')
     with Timer():
@@ -1465,6 +1464,23 @@ class Logs:
             self.entries[driver][output] = Entry(self.sampling_time,decimation)
         else:
             self.entries[driver] = {output:Entry(self.sampling_time,decimation)}
+    def __repr__(self):
+        if self.entries:
+            line = ["The 'logs' has {} entries:".format(self.N_entries)]
+            for d in self.entries:
+                line += [" * {}".format(d)]
+                for k,e in enumerate(self.entries[d]):
+                    v = self.entries[d][e]
+                    if v.data:
+                        line += ["   {0}. {1}: {2}x{3}".format(k+1,e,v.data[0].shape,len(v.data))]
+                    else:
+                        line += ["   {0}. {1}".format(k+1,e)]
+        else:
+            line = ["The 'logs' has no entries!"]
+        return "\n".join(line)
+    @property
+    def N_entries(self):
+        return sum([len(_) for _ in self.entries.values()])
 @
 \subsection{The broker}
 \label{sec:client-broker}
