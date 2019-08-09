@@ -135,7 +135,7 @@ if __name__ == "__main__":
     print("*********************************")
     print("**   STARTING SIMCEO SERVER    **")
     print("*********************************")
-    agent = broker()
+    agent = broker(verbose=logging.INFO)
     agent.start()
  
 @
@@ -216,7 +216,7 @@ try:
     #msg = self.socket.recv()
     #jmsg = ubjson.loadb(msg)
     msg = self._recv_()
-#    self.logger.debug('Received: %s',msg)
+    self.logger.debug('Received: %s',msg)
 except Exception as E:
     #print("Error raised by ubjson.loadb by that does not stop us!")
     print(msg)
@@ -492,9 +492,9 @@ The message that triggers the call to the \emph{Start} method is
 <<SOpticalPath>>=
     def Start(self,source_args=None, sensor_class=None, sensor_args=None, 
               calibration_source_args=None, miscellaneous_args=None):
-        self.logger.info(logging.debug)
         self.pssn_data = None
         #self.propagateThroughAtm = miscellaneous_args['propagate_through_atmosphere']
+        self.logger.info('Instantiating source')
         self.src = ceo.Source( **source_args )
         self.src.reset()
         self.gmt.reset()
@@ -503,6 +503,9 @@ The message that triggers the call to the \emph{Start} method is
         
         if not (sensor_class is None or sensor_class=='None'):
 
+            self.logger.info('Instantiating sensor')
+            self.logger.debug(sensor_class)
+            self.logger.debug(sensor_args)
             self.sensor = getattr(ceo,sensor_class)( **sensor_args )
             if calibration_source_args is None:
                 self.calib_src = self.src
@@ -738,44 +741,25 @@ The message that triggers a call to the \emph{InitializeConditions} method is
                     return
                 
             with Timer():
-                if len(calibrations)>1:
-                    for key in calibrations: # Through calibrations
-                        calibs = calibrations[key]
-                        if not isinstance(calibs,list):
-                            calibs = [calibs]
-                        D = []
-                        for c in calibs: # Through calib
-                            self.gmt.reset()
-                            self.src.reset()
-                            self.sensor.reset()
-                            D.append( getattr( self.gmt, c["method_id"] )( self.sensor, 
-                                                                           self.src, 
-                                                                           **c["args"] ) )
-                        self.gmt.reset()
-                        self.src.reset()
-                        self.sensor.reset()
-                        C = ceo.CalibrationVault(D, **pseudo_inverse )
-                        self.comm_matrix[key] = C
-                else:
-                    for key in calibrations: # Through calibrations
-                        self.logger.info('Calibration: %s',key)
-                        calibs = calibrations[key]
-                        #Gif not isinstance(calibs,list):
-                        #    calibs = [calibs]
-                        #GD = []
-                        #for c in calibs: # Through calib
-                        self.gmt.reset()
-                        self.src.reset()
-                        self.sensor.reset()
-                        C = getattr( self.gmt, calibs["method_id"] )( \
-                                            self.sensor, 
-                                            self.src,
-                                            calibrationVaultKwargs=pseudo_inverse, 
-                                            **calibs["args"])
-                        self.gmt.reset()
-                        self.src.reset()
-                        self.sensor.reset()
-                        self.comm_matrix[key] = C
+                for key in calibrations: # Through calibrations
+                    self.logger.info('Calibration: %s',key)
+                    calibs = calibrations[key]
+                    #Gif not isinstance(calibs,list):
+                    #    calibs = [calibs]
+                    #GD = []
+                    #for c in calibs: # Through calib
+                    self.gmt.reset()
+                    self.src.reset()
+                    self.sensor.reset()
+                    C = getattr( self.gmt, calibs["method_id"] )( \
+                                        self.sensor, 
+                                        self.src,
+                                        calibrationVaultKwargs=pseudo_inverse, 
+                                        **calibs["args"])
+                    self.gmt.reset()
+                    self.src.reset()
+                    self.sensor.reset()
+                    self.comm_matrix[key] = C
 
 
             if filename is not None:
@@ -1079,6 +1063,11 @@ The device parameter are formatted into messages that will be used to
 communicate to the server.    
 <<Server device parameter loading and formatting>>=
 def associate(self,prm_file):
+    base_units = np.pi/180
+    units = {'degree': base_units,
+             'arcmin': base_units/60,
+             'arcsec': base_units/60/60,
+             'mas': base_units/60/60/1e3}
     with open(prm_file) as f:
         prm = yaml.load(f)
     if 'mirror' in prm:
@@ -1089,6 +1078,12 @@ def associate(self,prm_file):
                 {k_i:v_i.data for k_i,v_i in self.inputs.items()})
     else:
         self.msg['class_id'] = 'OP'
+        if isinstance(prm['source']['zenith'],dict):
+            prm['source']['zenith'] = np.asarray(prm['source']['zenith']['value'])*\
+                                      units[prm['source']['zenith']['units']]
+        if isinstance(prm['source']['azimuth'],dict):
+            prm['source']['azimuth'] = np.asarray(prm['source']['azimuth']['value'])*\
+                                      units[prm['source']['azimuth']['units']]
         prm['source'].update({'samplingTime':self.tau*self.sampling_rate})
         self.msg_args['Start'].update({'source_args':prm['source'],
                                        'sensor_class':prm['sensor']['class'],
@@ -1133,8 +1128,9 @@ and [[init]] methods:
 self.__init = map(lambda x: x.init(), self.drivers.values())
 <<initializing the simulation>>=
 def init(self):
-    self.logger.info('Initializing')
+    self.logger.info('Starting')
     list(self.__start)
+    self.logger.info('Initializing')
     list(self.__init)
 @
 Then the [[update]] and [[output]] methods are called successively for the total
@@ -1313,10 +1309,12 @@ def start(self):
     m = 'Start'
     <<client-server exchange>>
     self.msg['class_id'] = reply
+    self.logger.info('%s',reply)
 def init(self):
     self.logger.debug('Initializing!')
     m = 'Init'
     <<client-server exchange>>
+    self.logger.info('%s',reply)
 def update(self,step):
     if step>=self.delay and step%self.sampling_rate==0:
         self.logger.debug('Updating!')
