@@ -70,7 +70,7 @@
 %   \caption{SIMCEO flowchart.}
 % \end{figure}
 
-\section{The simulink python module}
+\section{The python server module}
 \label{sec:simul-pyth-module}
 
 % \begin{figure}
