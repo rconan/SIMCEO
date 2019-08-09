@@ -1,0 +1,47 @@
+simulation:
+  sampling frequency: 500 # [Hertz]
+  duration: 1 # [seconds]
+  server:
+    IP: 127.0.0.1
+drivers:
+  atmosphere: {}
+  M2:
+    sampling_rate: 1 # [sample]
+    inputs:
+      Rxy:
+        size: [7,2]
+  wfs24:
+    outputs:
+      M2TT:
+        sampling_rate: 1 # [sample]
+        size: [7,2]
+      segment_tiptilt:
+        size: 14
+        logs:
+          decimation: 10
+  M2TT_controller:
+    server: false
+    delay: 0
+    sampling_rate: 1 # [sample]
+    inputs:
+      wfs24 data:
+        lien: [wfs24,M2TT]
+    outputs:
+      M2 command:
+        sampling_rate: 1 # [sample]
+        lien: [M2,Rxy]
+  science:
+    outputs:
+      wfe_rms:
+        size: 1
+        logs:
+          decimation: 10
+      tiptilt:
+        size: 2
+        logs:
+          decimation: 10
+      segment_tiptilt:
+        size: 14
+        logs:
+          decimation: 10
+

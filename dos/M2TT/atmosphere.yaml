@@ -1,0 +1,7 @@
+r0: 0.15 # meter
+L0: 30.0 # meter
+L: 25.5 # meter
+NXY_PUPIL: 321
+fov: 0.0 # arcsec
+duration: 10 # second
+filename: M2TT.bin

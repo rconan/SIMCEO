@@ -724,14 +724,14 @@ The message that triggers a call to the \emph{InitializeConditions} method is
 <<SOpticalPath>>=
     def Init(self, calibrations=None, filename=None,
          pseudo_inverse={}):
-        print("@(SOpticalPath:InitializeConditions)>")
+        self.logger.info('INIT')
         if calibrations is not None:
             if filename is not None:
                 filepath = os.path.join(SIMCEOPATH,"calibration_dbs",filename)
                 db = shelve.open(filepath)
                 
                 if os.path.isfile(filepath+".dir"):
-                    print(" . Loading command matrix from existing database %s!"%filename)
+                    self.logger.info("Loading command matrix from existing database %s!",filename)
                     for key in db:
                         C = db[key]
                         #C.nThreshold = [SVD_truncation[k]]
@@ -742,7 +742,7 @@ The message that triggers a call to the \emph{InitializeConditions} method is
                 
             with Timer():
                 for key in calibrations: # Through calibrations
-                    self.logger.info('Calibration: %s',key)
+                    self.logger.info('Calibrating: %s',key)
                     calibs = calibrations[key]
                     #Gif not isinstance(calibs,list):
                     #    calibs = [calibs]
@@ -763,7 +763,7 @@ The message that triggers a call to the \emph{InitializeConditions} method is
 
 
             if filename is not None:
-                print(" . Saving command matrix to database %s!"%filename)
+                self.logger.info("Saving command matrix to database %s!",filename)
                 db[str(key)] = C
                 db.close()
 @ 
@@ -959,6 +959,10 @@ class DOS(threading.Thread):
             self.cfg['simulation']['sampling frequency'],
             self.N_SAMPLE))
 
+        self._start()
+
+    <<starting the simulation>>
+
     <<initializing the simulation>>
 
     <<stepping through>>
@@ -1120,7 +1124,8 @@ Once the parameters are loaded and the drivers linked, we call the drivers [[sta
 <<starting the drivers>>=
 self.__start = map(lambda x: x.start(), self.drivers.values())
 <<starting the simulation>>=
-def start(self):
+def _start(self):
+    self.logger.info('Starting')
     list(self.__start)
 @
 and [[init]] methods:
@@ -1128,8 +1133,6 @@ and [[init]] methods:
 self.__init = map(lambda x: x.init(), self.drivers.values())
 <<initializing the simulation>>=
 def init(self):
-    self.logger.info('Starting')
-    list(self.__start)
     self.logger.info('Initializing')
     list(self.__init)
 @
