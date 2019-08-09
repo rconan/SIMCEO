@@ -1302,6 +1302,7 @@ if 'outputs' in kwargs:
         if 'logs' in v:
             slogs.add(tag,k,v['logs']['decimation'])
             v['logs'] = slogs.entries[tag][k]
+            self.logger.info('Output logged in!')
         self.outputs[k] = Output(k,**v)
 @
 @ %def Server       
@@ -1459,7 +1460,10 @@ class Logs:
         self.sampling_time = sampling_time
         self.entries = {}
     def add(self,driver,output,decimation):
-        self.entries[driver] = {output:Entry(self.sampling_time,decimation)}
+        if driver in self.entries:
+            self.entries[driver][output] = Entry(self.sampling_time,decimation)
+        else:
+            self.entries[driver] = {output:Entry(self.sampling_time,decimation)}
 @
 \subsection{The broker}
 \label{sec:client-broker}
