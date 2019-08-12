@@ -38,20 +38,20 @@ drivers:
 The `atmosphere.yaml` file sets the main parameters of the atmosphere.
 The atmospheric Cn2 and wind vector profiles correspond to the GMT median profile from Goodwin data.
 ```yaml
-# The Fried parameter [meter]
+# The Fried parameter [m]
 r0: 0.15
-# The outer scale [meter]
+# The outer scale [m]
 L0: 30.0
 # The size of the phase screen at the ground [m]
-L: 25.5 # meter
-# The resolution of the phase screen at the ground [m]
+L: 25.5
+# The resolution of the phase screen at the ground [pixel]
 NXY_PUPIL: 321
 # The field of view that defines the size of the phase screen above ground [arcsec]
-fov: 0.0 # arcsec
+fov: 0.0
 # The time span of the phase screen [second]
-duration: 10 # second
-# The filename where to store the phase screens, if the file exist it will loaded automatically
-filename: M2TT.bin
+duration: 10
+# The filename where to store the phase screens, if the file exist it is loaded automatically
+filename: phase_screen_meaningfull_name.bin
 ```
 
 ## Mirror drivers
@@ -81,6 +81,22 @@ drivers:
         size: [7,2]
       mode_coefs:
         size: [7,n_mode]
+```
+Both `M1.yaml` and `M2.yaml` have the same syntax.
+If the degrees of freedom are only the rigid body motions, then the file is:
+```yaml
+mirror: # M1 or M2
+mirror_args: {}
+```
+
+if the mirror modes are included, then the file becomes:
+```yaml
+mirror: # M1 or M2
+mirror_args:
+  M1_mirror_modes: # zernike ,Karhunen-Loeve or bending modes
+  M2_mirror_modes: # zernike or Karhunen-Loeve
+  M1_N_MODE: # The number of modes
+  M2_N_MODE: # The number of modes
 ```
 
 ## Optical path driver
@@ -117,6 +133,46 @@ driver:
       PSSn:
         size:1
 ```
+
+The parameter file contains the source, sensor and calibration parameters.
+```yaml
+source:
+  photometric_band: # the source wavelength, one of V,R,I,J,K
+  zenith: # the source zenith angle [rd]
+  azimuth: # the source azimuth angle [rd]
+# An alternative syntax for zenith and azimuth is:
+  zenith:
+    value: # the source zenith angle
+    units: # the angle units, degree, arcmin, arcsec or mas
+  azimuth:
+    value: # the source azimuth angle
+    units: # the angle units, degree, arcmin, arcsec or mas
+  magnitude: # the star magnitude
+  rays_box_size: # the size of the square area sampled by ray tracing
+  rays_box_sampling: # the resolution of one side of the ray tracing square sample [N_SIDE_LENSLET*N_PX_LENSLET+1]
+  rays_origin: # A 3 element list [x,y,z] where x and y are the coordinates of the chief ray intersection
+               # with the entrance pupil (M1) and z is the altitude above the telescope
+               # where ray tracing starts [0,0,25]
+sensor:
+  class: # GeometricShackHartmann, ShackHartmann, Pyramid
+  args:
+    N_SIDE_LENSLET: # the size of the lenslet array
+    N_PX_LENSLET: # the number of pixel per lenslet
+    d: 1.0625 # the lenslet array pitch [rays_box_size/N_SIDE_LENSLET]
+    intensityThreshold: # the lenslet illumination threshold
+calibrate args: 
+  calibrations:
+    calibration name:  
+      method_id: # the calibration method: calibrate, AGWS_calibrate, NGAO_calibrate
+      args: # the calibration method arguments
+        mirror: #
+        mode: #
+        stroke: #
+        ...
+  filename: # the filename where the calibration matrix is stored, if it exist it is loaded automatically
+```
+
+
 ## Controller driver
 
 A controller can be placed between a sensor and a mirror.
@@ -125,11 +181,26 @@ The outputs are given as a list with the mirror name and mirror input name.
 
 ```yaml
 driver:
-  server: false
-  inputs:
-    input data:
-      lien: [sensor,output]
-  outputs:
-    output data:
-      lien: [mirror,dof]
+  ctrlr name:
+    server: false
+    inputs:
+      input data:
+        lien: [sensor,output]
+    outputs:
+      output data:
+        lien: [mirror,dof]
+```
+
+The `ctrlr name.yaml` file contains the controller parameter as
+
+ * the numerator and denominator coefficients of the transfer function in the Z domain [n,d]
+ * the zeros, poles and gains of the transfer function [z,p,g]
+ * a state space representation [A,B,C,D]
+ 
+```yaml
+system:
+  sampling time: # The sampling time [second]
+  transfer function:
+    num: [...] 
+    denom: [...]
 ```
