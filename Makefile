@@ -9,7 +9,7 @@ client:
 	mkdir -p etc
 	mkdir -p dos
 	$(TANGLE) -Rdos.yaml simceo.nw > etc/dos.yaml
-	$(TANGLE) -R__init__.py simceo.nw > dos/__init__.py
+	$(TANGLE) -Rinit.py simceo.nw > dos/__init__.py
 	$(TANGLE) -Rdos.py simceo.nw > dos/dos.py
 	$(TANGLE) -Rdriver.py simceo.nw > dos/driver.py
 
