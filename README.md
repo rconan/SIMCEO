@@ -10,18 +10,18 @@ A simulation takes as parameter the path to the directory that contains the simu
 A new simulation is invoked with
 ```python
 >>> import dos
->>> dos.DOS(path_to_config_dir)
->>> dos.start()
+>>> sim = dos.DOS(path_to_config_dir)
+>>> sim.start()
 ```
 An any time, the status of the simulation can be checked by calling:
 ```python
->>> dos.pctComplete
+>>> sim.pctComplete
 ```
 that return the simulation percentage to completion.
 
 Or by checking the logs:
 ```python
->>> dos.logs
+>>> sim.logs
 ```
 
 
