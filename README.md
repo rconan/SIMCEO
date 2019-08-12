@@ -1,3 +1,30 @@
+# SIMCEO
+
+**SIMCEO** is a client/server application to run Dynamic Optical Simulations (**DOS**) for the GMT.
+The server and client along with the reference manual are contained in the `simceo.nw` file.
+The server acts as a remote interface for [`CEO`](https://github.com/rconan/CEO).
+The server is extracted with `make server` and started with `python simceo.py`.
+The client module `dos` is build with `make client`.
+
+A simulation takes as parameter the path to the directory that contains the simulation configuration and parameter files.
+A new simulation is invoked with
+```python
+>>> import dos
+>>> dos.DOS(path_to_config_dir)
+>>> dos.start()
+```
+An any time, the status of the simulation can be checked by calling:
+```python
+>>> dos.pctComplete
+```
+that return the simulation percentage to completion.
+
+Or by checking the logs:
+```python
+>>> dos.logs
+```
+
+
 # DOS configuration file
 
 Each simulation is defined by a set of YAML files gather in the same directory.
