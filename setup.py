@@ -1,3 +1,4 @@
+import setuptools
 from distutils.core import setup
 
 setup(
@@ -5,8 +6,9 @@ setup(
     author_email = 'rconan@gmto.org',
     url ='https://github.com/rconan/SIMCEO/tree/python-client',
     name='DOS',
-    description='GMT Dynamic Optical Simulation Client/Server application',
+    description='GMT Dynamic Optical Simulation Client/Server Application',
+    long_description=open('README.md').read(),
     version='0.1dev',
     packages=['dos',],
-    long_description=open('README.md').read(),
+    install_requires=['pyzmq','numpy','scipy','graphviz'],
 )
