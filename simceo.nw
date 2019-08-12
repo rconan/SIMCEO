@@ -85,7 +85,6 @@ import sys
 import threading
 import time
 import zmq
-import ubjson
 import ceo
 import numpy as np
 from collections import OrderedDict
@@ -898,6 +897,9 @@ A [[dos]] simulation is defined with a parameter file [[dos.yaml]].
 <<dos.yaml>>=
 <<dos simulation section>>
 <<dos drivers section>>
+<<init.py>>=
+from .dos import DOS
+from . import driver
 @
 \subsection{Simulation}
 \label{sec:simulation}
@@ -907,10 +909,10 @@ The first section is [[simulation]] where the simulation sampling frequency and
 duration is given as well as the address of the SIMCEO server.
 <<dos simulation section>>=
 simulation:
-  sampling frequency: 100 # [Hertz]
-  duration: 1 # [seconds]
+  sampling frequency: # [Hertz]
+  duration: # [seconds]
   server:
-    IP: 127.0.0.1
+    IP: # 127.0.0.1
 @
 
 The [[DOS]] class acts as the simulation conductor.
@@ -1184,17 +1186,18 @@ Each device outputs is defined by a name and has for properties a given sampling
 <<dos drivers section>>=
 drivers:
   device name:
-    delay: 7 # [sample]
-    sampling rate: 5 # [sample]
+    server: true
+    delay: 0 # [sample]
+    sampling rate: 1 # [sample]
     inputs:
       input name:
         size: 0
-        origin: [device, device output name]
+        lien: [device, device output name]
     outputs:
       output name:
-        sampling rate: 10 # [sample]
+        sampling rate: 1 # [sample]
         size: 0
-        destination: [device, device input name]
+        lien: [device, device input name]
 @
 The driver module defines classes that are interfaced to devices either of the
 server or on the client.
