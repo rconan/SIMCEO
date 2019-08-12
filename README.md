@@ -158,7 +158,7 @@ sensor:
   args:
     N_SIDE_LENSLET: # the size of the lenslet array
     N_PX_LENSLET: # the number of pixel per lenslet
-    d: 1.0625 # the lenslet array pitch [rays_box_size/N_SIDE_LENSLET]
+    d: # the lenslet array pitch [rays_box_size/N_SIDE_LENSLET]
     intensityThreshold: # the lenslet illumination threshold
 calibrate args: 
   calibrations:
@@ -176,6 +176,7 @@ calibrate args:
 ## Controller driver
 
 A controller can be placed between a sensor and a mirror.
+The controller runs on the client side of the application, `server` must then be set to `false`.
 The inputs are given as a list with the sensor section name and sensor output name.
 The outputs are given as a list with the mirror name and mirror input name.
 
