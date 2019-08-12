@@ -35,6 +35,24 @@ If an atmosphere need to be included in the simulation, then the atmosphere driv
 drivers:
   atmosphere: {}
 ```
+The `atmosphere.yaml` file sets the main parameters of the atmosphere.
+The atmospheric Cn2 and wind vector profiles correspond to the GMT median profile from Goodwin data.
+```yaml
+# The Fried parameter [meter]
+r0: 0.15
+# The outer scale [meter]
+L0: 30.0
+# The size of the phase screen at the ground [m]
+L: 25.5 # meter
+# The resolution of the phase screen at the ground [m]
+NXY_PUPIL: 321
+# The field of view that defines the size of the phase screen above ground [arcsec]
+fov: 0.0 # arcsec
+# The time span of the phase screen [second]
+duration: 10 # second
+# The filename where to store the phase screens, if the file exist it will loaded automatically
+filename: M2TT.bin
+```
 
 ## Mirror drivers
 
@@ -68,7 +86,7 @@ drivers:
 ## Optical path driver
 
 An optical path is composed of a source and a wavefront sensor.
-The optical path will be the atmosphere if it is specified, the GMT and the wavefront sensor.
+The optical path consists in the atmosphere if it is specified, the GMT and the wavefront sensor.
 The optical path section of a driver has only outputs.
 If an interaction matrix is made between the WFS and some degrees of freedom of M1 and/or M2, the name of one output must match the name given to the interaction matrix.
 There are a few outputs that provides wavefront and image quality information:
