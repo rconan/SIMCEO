@@ -490,7 +490,7 @@ The message that triggers the call to the \emph{Start} method is
 @ 
 <<SOpticalPath>>=
     def Start(self,source_args=None, sensor_class=None, sensor_args=None, 
-              calibration_source_args=None, miscellaneous_args=None):
+              calibration_source_args=None, calibrate_args=None):
         self.pssn_data = None
         #self.propagateThroughAtm = miscellaneous_args['propagate_through_atmosphere']
         self.logger.info('Instantiating source')
@@ -512,7 +512,8 @@ The message that triggers the call to the \emph{Start} method is
                 self.calib_src = ceo.Source( **calibration_source_args )
 	
             self.sensor.reset()
-            self.sensor.calibrate(self.calib_src, sensor_args['intensityThreshold'])
+            if calibrate_args is not None:
+                self.sensor.calibrate(self.calib_src, **calibrate_args)
             #print "intensity_threshold: %f"%sensor_args['intensityThreshold']
 
             self.sensor.reset()
@@ -1093,11 +1094,12 @@ def associate(self,prm_file):
                                        'sensor_class':prm['sensor']['class'],
                                        'sensor_args':{},
                                        'calibration_source_args':None,
-                                       'miscellaneous_args':None})
+                                       'calibrate_args':None})
         if prm['sensor']['class'] is not None:
             self.msg_args['Start']['sensor_args'].update(prm['sensor']['args'])
-        if 'calibrate args' in prm:
-            self.msg_args['Init'].update(prm['calibrate args'])
+            self.msg_args['Start']['calibrate_args'] = prm['sensor']['calibrate_args']
+        if 'interaction matrices' in prm:
+            self.msg_args['Init'].update(prm['interaction matrices'])
         self.msg_args['Outputs']['outputs'] += [k_o for k_o in self.outputs]
 <<driver imports>>=
 from scipy import signal

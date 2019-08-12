@@ -40,7 +40,7 @@ cd DOS-x.x
 python setup.py install
 ```
 
-# DOS configuration file
+# DOS configuration
 
 Each simulation is defined by a set of YAML files gather in the same directory.
 The simulation configuration is always given by the `dos.yaml` file.
@@ -201,8 +201,10 @@ sensor:
     N_SIDE_LENSLET: # the size of the lenslet array
     N_PX_LENSLET: # the number of pixel per lenslet
     d: # the lenslet array pitch [rays_box_size/N_SIDE_LENSLET]
-    intensityThreshold: # the lenslet illumination threshold
-calibrate args: 
+  calibrate_args:
+    threshold: # the lenslet illumination threshold (this apply solely to Shack-Hartmann sensors)
+    ...: ... # arguments for the sensor calibrate method
+interaction matrices: 
   calibrations:
     calibration name:  
       method_id: # the calibration method: calibrate, AGWS_calibrate, NGAO_calibrate
