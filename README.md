@@ -146,7 +146,7 @@ mirror_args:
 An optical path is composed of a source and a wavefront sensor.
 The optical path consists in the atmosphere if it is specified, the GMT and the wavefront sensor.
 The optical path section of a driver has only outputs.
-If an interaction matrix is made between the WFS and some degrees of freedom of M1 and/or M2, the name of one output must match the name given to the interaction matrix.
+*If an interaction matrix is made between the WFS and some degrees of freedom of M1 and/or M2, the name of one output must match the name given to the interaction matrix.*
 There are a few outputs that provides wavefront and image quality information:
 
  * `wfe_rms`: the wavefront standart deviation [micron]
@@ -155,6 +155,8 @@ There are a few outputs that provides wavefront and image quality information:
  * `tiptilt`: the wavefront finite difference average over the whole GMT pupil [arcsec]
  * `segment_tiptilt`: the wavefront finite difference average over each segment [arcsec]
  * `PSSn`: the normalized point source sensitivity
+ 
+ Attributes of the source and the wavefront sensor can be passed as outputs.
 
 ```yaml
 driver:

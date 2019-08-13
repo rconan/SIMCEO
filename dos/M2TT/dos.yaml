@@ -16,6 +16,7 @@ drivers:
         sampling_rate: 1 # [sample]
         size: [7,2]
       data:
+        sampling_rate: 500 # [sample]
         size: 0
         logs:
           decimation: 500
