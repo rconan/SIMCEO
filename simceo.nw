@@ -757,11 +757,11 @@ The message that triggers a call to the \emph{InitializeConditions} method is
                     self.gmt.reset()
                     self.src.reset()
                     self.sensor.reset()
-                    C = getattr( self.gmt, calibs["method_id"] )( \
+                    D = getattr( self.gmt, calibs["method_id"] )( \
                                         self.sensor, 
                                         self.src,
-                                        calibrationVaultKwargs=pseudo_inverse, 
                                         **calibs["args"])
+                    C = ceo.CalibrationVault([D],**pseudo_inverse)
                     self.gmt.reset()
                     self.src.reset()
                     self.sensor.reset()
@@ -956,6 +956,8 @@ class DOS(threading.Thread):
         self.N_SAMPLE = int(self.cfg['simulation']['sampling frequency']*
                             self.cfg['simulation']['duration'])
         self.__k_step = 0
+        self.pushed = False
+        self.initialized = False
         <<check parameter file existence>>
         <<linking the drivers IO>>
         <<device to driver association>>
@@ -1135,6 +1137,7 @@ self.__start = map(lambda x: x.start(), self.drivers.values())
 def push(self):
     self.logger.info('Pushing configuration to server')
     list(self.__start)
+    self.pushed = True
 @
 and [[init]] methods:
 <<initializing the drivers>>=
@@ -1143,6 +1146,7 @@ self.__init = map(lambda x: x.init(), self.drivers.values())
 def init(self):
     self.logger.info('Initializing')
     list(self.__init)
+    self.initialized = True
 @
 Then the [[update]] and [[output]] methods are called successively for the total
 [[duration]] of the simulation.
@@ -1156,8 +1160,10 @@ def stepping(self):
         yield [x.update(l) for x in v] + [x.output(l) for x in v]
 <<running the simulation>>=
 def run(self):
-    self.push()
-    self.init()
+    if not self.pushed:
+        self.push()
+    if not self.initialized:
+        self.init()
     self.logger.info('Running')
     with Timer():
         for self.__k_step in range(self.N_SAMPLE):
