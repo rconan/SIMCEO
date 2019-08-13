@@ -15,6 +15,10 @@ drivers:
       M2TT:
         sampling_rate: 1 # [sample]
         size: [7,2]
+      data:
+        size: 0
+        logs:
+          decimation: 500
       segment_tiptilt:
         size: 14
         logs:
@@ -35,13 +39,13 @@ drivers:
       wfe_rms:
         size: 1
         logs:
-          decimation: 10
+          decimation: 1
       tiptilt:
         size: 2
         logs:
-          decimation: 10
+          decimation: 1
       segment_tiptilt:
         size: 14
         logs:
-          decimation: 10
+          decimation: 1
 
