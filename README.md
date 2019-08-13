@@ -135,10 +135,8 @@ if the mirror modes are included, then the file becomes:
 ```yaml
 mirror: # M1 or M2
 mirror_args:
-  M1_mirror_modes: # zernike ,Karhunen-Loeve or bending modes
-  M2_mirror_modes: # zernike or Karhunen-Loeve
-  M1_N_MODE: # The number of modes
-  M2_N_MODE: # The number of modes
+  mirror_modes: # zernike ,Karhunen-Loeve or bending modes
+  N_MODE: # The number of modes
 ```
 
 ## Optical path driver
@@ -215,6 +213,10 @@ interaction matrices:
         mode: #
         stroke: #
         ...
+  pseudo_inverse: 
+    remove_modes: [null] # Index of modes (columns) to delete in the interaction matrix D [list]
+    insert_zeros: [null] # Index of rows to add and to set to 0 in the pseudo-inverse of D [list]
+    n_threshold: [0] # The number of truncated eigen values of D [list]
   filename: # the filename where the calibration matrix is stored, if it exist it is loaded automatically
 ```
 

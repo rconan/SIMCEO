@@ -757,11 +757,11 @@ The message that triggers a call to the \emph{InitializeConditions} method is
                     self.gmt.reset()
                     self.src.reset()
                     self.sensor.reset()
-                    C = getattr( self.gmt, calibs["method_id"] )( \
+                    D = getattr( self.gmt, calibs["method_id"] )( \
                                         self.sensor, 
                                         self.src,
-                                        calibrationVaultKwargs=pseudo_inverse, 
                                         **calibs["args"])
+                    C = ceo.CalibrationVault([D],**pseudo_inverse)
                     self.gmt.reset()
                     self.src.reset()
                     self.sensor.reset()
