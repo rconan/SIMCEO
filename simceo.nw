@@ -134,7 +134,9 @@ if __name__ == "__main__":
     print("*********************************")
     print("**   STARTING SIMCEO SERVER    **")
     print("*********************************")
-    agent = broker(verbose=logging.INFO)
+    args = sys.argv[1:]
+    verbose = int(args[0]) if args else logging.INFO
+    agent = broker(verbose=verbose)
     agent.start()
  
 @
@@ -623,6 +625,10 @@ and the dictionnary implementation is
             else:
                 pssn = self.gmt.PSSn(self.src,**self.pssn_data)
             return pssn
+        elif hasattr(self.src,key):
+            return getattr(self.src,key)
+        elif hasattr(self.sensor,key):
+            return getattr(self.sensor,key)
         else:
             c = self.comm_matrix[key].dot( self.sensor.Data ).ravel()
             return c.tolist()
@@ -1336,11 +1342,17 @@ def output(self,step):
                 for k,v in self.outputs.items():
                     if step%v.sampling_rate==0:
                         self.logger.debug('Outputing %s!',k)
-                        v.data[...] = \
-                                np.asarray(reply[k]).reshape(self.outputs[k].size)
-                    if v.logs is not None:
-                        self.logger.debug('LOGGING')
-                        v.logs.add(v.data.copy())
+                        try:
+                            v.data[...] = np.asarray(reply[k]).reshape(v.size)
+                        except ValueError:
+                            self.logger.warning('Resizing %s!',k)
+                            __red = np.asarray(reply[k])
+                            v.size = __red.size
+                            v.data = np.zeros(__red.shape)
+                            v.data[...] = __red
+                        if v.logs is not None and step%v.logs.decimation==0:
+                            self.logger.debug('LOGGING')
+                            v.logs.add(v.data.copy())
 
 def terminate(self):
     self.logger.debug('Terminating!')
