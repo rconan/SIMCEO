@@ -195,6 +195,11 @@ source:
   rays_origin: # A 3 element list [x,y,z] where x and y are the coordinates of the chief ray intersection
                # with the entrance pupil (M1) and z is the altitude above the telescope
                # where ray tracing starts [0,0,25]
+source_attributes:
+  rays:
+    rot_angle:
+      value = 15
+      units = degree
 sensor:
   class: # GeometricShackHartmann, ShackHartmann, Pyramid
   args:

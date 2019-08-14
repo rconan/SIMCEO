@@ -491,12 +491,20 @@ The message that triggers the call to the \emph{Start} method is
 }
 @ 
 <<SOpticalPath>>=
-    def Start(self,source_args=None, sensor_class=None, sensor_args=None, 
+    def Start(self,source_args=None, source_attributes={},
+              sensor_class=None, sensor_args=None,
               calibration_source_args=None, calibrate_args=None):
         self.pssn_data = None
         #self.propagateThroughAtm = miscellaneous_args['propagate_through_atmosphere']
         self.logger.info('Instantiating source')
         self.src = ceo.Source( **source_args )
+        for key in source_attributes:
+            attr = source_attributes[key]
+            if isinstance(attr,dict):
+                for kkey in attr:
+                    setattr(getattr(src,key),kkey,atrr[kkey])
+            else:
+                setattr(src,key,attr)
         self.src.reset()
         self.gmt.reset()
         self.gmt.propagate(self.src)
@@ -1103,6 +1111,16 @@ def associate(self,prm_file):
                                        'sensor_args':{},
                                        'calibration_source_args':None,
                                        'calibrate_args':None})
+
+        if 'source_attributes' in prm['source']:
+            if 'rays' in prm['source']['source_attributes'] and \
+               'rot_angle' in  prm['source']['source_attributes']['rays'] and \
+               isinstance(prm['source']['source_attributes']['rays']['rot_angle'],dict):
+                prm['source']['source_attributes']['rays']['rot_angle'] = \
+                 np.asarray(prm['source']['source_attributes']['rays']['rot_angle']['value'])*\
+                   units[prm['source']['source_attributes']['rays']['rot_angle']['units']]
+        self.msg_args['Start'].update({'source_attributes':prm['source']['source_attributes']})
+
         if prm['sensor']['class'] is not None:
             self.msg_args['Start']['sensor_args'].update(prm['sensor']['args'])
             self.msg_args['Start']['calibrate_args'] = prm['sensor']['calibrate_args']
@@ -1160,6 +1178,16 @@ def stepping(self):
         yield [x.update(l) for x in v] + [x.output(l) for x in v]
 <<running the simulation>>=
 def run(self):
+    if not self.pushed:
+        self.push()
+    if not self.initialized:
+        self.init()
+    self.logger.info('Running')
+    with Timer():
+        for self.__k_step in range(self.N_SAMPLE):
+            next(self.step)
+    self.terminate()
+def _run_(self):
     if not self.pushed:
         self.push()
     if not self.initialized:
@@ -1542,18 +1570,6 @@ class broker:
 
 @
 
-\subsection{Main}
-\label{sec:dos.main}
-
-<<dos.py>>=
-
-if __name__=="__main__":
-
-    dospath = sys.argv[1]
-    sim = DOS(dospath)
-    sim.run()
-@
-
 \subsection{Timing diagram}
 \label{sec:timing-diag}
 
@@ -1630,6 +1646,21 @@ def diagram(self):
                                   search_method(data.lien[0],'update'))
 
     return sampling,main
+@
+
+\subsection{Main}
+\label{sec:dos.main}
+
+<<sim.py>>=
+
+import sys
+import dos
+
+if __name__=="__main__":
+
+    dospath = sys.argv[1]
+    sim = dos.DOS(dospath)
+    sim._run_()
 @
 
 
