@@ -1117,9 +1117,9 @@ def associate(self,prm_file):
                'rot_angle' in  prm['source']['source_attributes']['rays'] and \
                isinstance(prm['source']['source_attributes']['rays']['rot_angle'],dict):
                 prm['source']['source_attributes']['rays']['rot_angle'] = \
-                 np.asarray(prm['source']['source_attributes']['rays']['rot_angle']['value'])*\
+                  np.asarray(prm['source']['source_attributes']['rays']['rot_angle']['value'])*\
                    units[prm['source']['source_attributes']['rays']['rot_angle']['units']]
-        self.msg_args['Start'].update({'source_attributes':prm['source']['source_attributes']})
+                self.msg_args['Start'].update({'source_attributes':prm['source']['source_attributes']})
 
         if prm['sensor']['class'] is not None:
             self.msg_args['Start']['sensor_args'].update(prm['sensor']['args'])

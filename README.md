@@ -198,8 +198,8 @@ source:
 source_attributes:
   rays:
     rot_angle:
-      value = 15
-      units = degree
+      value: 15
+      units: degree
 sensor:
   class: # GeometricShackHartmann, ShackHartmann, Pyramid
   args:
