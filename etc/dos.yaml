@@ -1,0 +1,19 @@
+simulation:
+  sampling frequency: # [Hertz]
+  duration: # [seconds]
+  server:
+    IP: # 127.0.0.1
+drivers:
+  device name:
+    server: true
+    delay: 0 # [sample]
+    sampling rate: 1 # [sample]
+    inputs:
+      input name:
+        size: 0
+        lien: [device, device output name]
+    outputs:
+      output name:
+        sampling rate: 1 # [sample]
+        size: 0
+        lien: [device, device input name]
