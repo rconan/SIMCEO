@@ -935,6 +935,7 @@ It is initialized with the path to the directory where the configuration and
 parameter files reside.
 <<dos imports>>=
 import os
+import time
 import yaml
 import logging
 import threading
