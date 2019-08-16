@@ -27,10 +27,14 @@ Or by checking the logs:
 
 # Install
 
+## Cutting edge
+
 SIMCEO server and client along with the reference manual are contained in the `simceo.nw` file.
 The server is extracted with `make server`.
 The client module `dos` is build with `make client`.
 `noweb` needs to be installed to build both.
+
+## Releases
 
 Alternatively, you can download the latest [release](https://github.com/rconan/SIMCEO/releases) DOS-x.x.tar.gz where the source files have already been generated.
 To install SIMCEO, perfom the following steps:
