@@ -1396,9 +1396,15 @@ def output(self,step):
                             v.size = __red.size
                             v.data = np.zeros(__red.shape)
                             v.data[...] = __red
-                        if v.logs is not None and step%v.logs.decimation==0:
-                            self.logger.debug('LOGGING')
-                            v.logs.add(v.data.copy())
+                        if v.logs is not None:
+                            try:
+                                if step%v.logs.decimation==0:
+                                    self.logger.debug('LOGGING')
+                                    v.logs.add(v.data.copy())
+                            except ZeroDivisionError:
+                                self.logger.debug('LOGGING')
+                                v.logs.add(v.data.copy())
+                                v.logs.decimation=np.Inf
 
 def terminate(self):
     self.logger.debug('Terminating!')

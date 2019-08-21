@@ -3,6 +3,7 @@ simulation:
   duration: 1 # [seconds]
   server:
     IP: 127.0.0.1
+#    IP: 34.213.27.234
 drivers:
   atmosphere: {}
   M2:
@@ -24,6 +25,10 @@ drivers:
         size: 14
         logs:
           decimation: 10
+      n_valid_lenslet:
+        size: 1
+        logs:
+          decimation: 0
   M2TT_controller:
     server: false
     delay: 0
