@@ -123,6 +123,8 @@ drivers:
     inputs:
       TxyzRxyz:
         size: [7,6]
+      Tz:
+        size: [7,1]
       Rxy:
         size: [7,2]
       mode_coefs:

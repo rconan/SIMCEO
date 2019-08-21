@@ -397,6 +397,9 @@ The message that triggers the call to the \emph{Update} method is
             elif key=="Rxy":
                 self.gmt[mirror].motion_CS.euler_angles[:,:2] = data
                 self.gmt[mirror].motion_CS.update()
+            elif key=="Tz":
+                self.gmt[mirror].motion_CS.origin[:,2] = data.ravel()
+                self.gmt[mirror].motion_CS.update()
             elif key=="mode_coefs":
                     self.gmt[mirror].modes.a[:] = data
                     self.gmt[mirror].modes.update()
