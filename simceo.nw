@@ -963,7 +963,7 @@ class Timer(object):
 
 class DOS(threading.Thread):
     def __init__(self,path_to_config_dir,verbose=logging.INFO,
-                 mode='ready'):
+                 show_timing=0):
 
         threading.Thread.__init__(self)
 
@@ -976,7 +976,7 @@ class DOS(threading.Thread):
             self.cfg = yaml.load(f)
 
         self.agent = None
-        if mode=='ready':
+        if show_timing in [0,2]:
             self.agent = broker(self.cfg['simulation']['server']['IP'])
 
         self.N_SAMPLE = int(self.cfg['simulation']['sampling frequency']*
@@ -996,7 +996,7 @@ class DOS(threading.Thread):
             self.cfg['simulation']['sampling frequency'],
             self.N_SAMPLE))
 
-        if mode=='check timing':
+        if show_timing>0:
             self.diagram(filename=path_to_config_dir.replace('/','_'),format='png')
 
     <<starting the simulation>>
@@ -1455,7 +1455,7 @@ def init(self):
     self.__xout = np.zeros((1,self.system.A.shape[0]))
     self.__yout = np.zeros((1, self.system.C.shape[0]))
 def update(self,step):
-    if step>=self.delay and step%self.sampling_rate==0:
+    if step>=self.delay and (step-self.delay)%self.sampling_rate==0:
         self.logger.debug('Updating!')
         u = np.hstack([_.data.reshape(1,-1) for _  in self.inputs.values()])
         self.logger.debug('u: %s',u)
@@ -1464,15 +1464,24 @@ def update(self,step):
 
 def output(self,step):
     if step>=self.delay:
+        a = 0
+        b = 0
         for k,v in self.outputs.items():
-            if step%v.sampling_rate==0:
+            if (step-self.delay)%v.sampling_rate==0:
                 self.logger.debug('Outputing %s!',k)
+                b = a + v.data.size
+                self.logger.debug('%s [%s]: [%d,%d]',k,v.size,a,b)
+                v.data[...] = self.__yout[0,a:b].reshape(v.size)
+                a = b
+                """
                 a = 0
-                for k in self.outputs:
-                    b = a + self.outputs[k].data.size
-                    self.outputs[k].data[...] = \
-                                self.__yout[0,a:b].reshape(self.outputs[k].size)
+                for ok in self.outputs:
+                    b = a + self.outputs[ok].data.size
+                    self.logger.debug('%s [%s]: [%d,%d]',ok,self.outputs[ok].size,a,b)
+                    self.outputs[ok].data[...] = \
+                                self.__yout[0,a:b].reshape(self.outputs[ok].size)
                     a = b
+                """
 
 def terminate(self):
     self.logger.debug('Terminating!')
