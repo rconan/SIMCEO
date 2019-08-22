@@ -1387,7 +1387,7 @@ def init(self):
     <<client-server exchange>>
     self.logger.info('%s',reply)
 def update(self,step):
-    if step>=self.delay and step%self.sampling_rate==0:
+    if step>=self.delay and (step-self.delay)%self.sampling_rate==0:
         self.logger.debug('Updating!')
         m = 'Update'
         <<client-server exchange>>
@@ -1398,7 +1398,7 @@ def output(self,step):
                 <<client-server exchange>>
                 self.logger.debug("Reply: %s",reply)
                 for k,v in self.outputs.items():
-                    if step%v.sampling_rate==0:
+                    if (step-self.delay)%v.sampling_rate==0:
                         self.logger.debug('Outputing %s!',k)
                         try:
                             v.data[...] = np.asarray(reply[k]).reshape(v.size)
@@ -1408,7 +1408,7 @@ def output(self,step):
                             v.size = __red.shape
                             v.data = np.zeros(__red.shape)
                             v.data[...] = __red
-                        if v.logs is not None and step%v.logs.decimation==0:
+                        if v.logs is not None and (step-self.delay)%v.logs.decimation==0:
                             self.logger.debug('LOGGING')
                             v.logs.add(v.data.copy())
 
