@@ -1405,7 +1405,7 @@ def output(self,step):
                         except ValueError:
                             self.logger.warning('Resizing %s!',k)
                             __red = np.asarray(reply[k])
-                            v.size = __red.size
+                            v.size = __red.shape
                             v.data = np.zeros(__red.shape)
                             v.data[...] = __red
                         if v.logs is not None and step%v.logs.decimation==0:
