@@ -20,7 +20,7 @@ drivers:
         sampling_rate: 500 # [sample]
         size: 0
         logs:
-          decimation: 500
+          decimation: 1
       segment_tiptilt:
         size: 14
         logs:
