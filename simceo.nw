@@ -1305,6 +1305,7 @@ keys and the values being an instance of the [[Inputs]] and [[Outputs]] classes.
 class IO:
     def __init__(self,tag,size=0, lien=None, logs=None):
         self.logger = logging.getLogger(tag)
+        self.logger.setLevel(logging.INFO)
         self.size = size
         self.data = np.zeros(size)
         self.lien = lien
@@ -1641,13 +1642,20 @@ def diagram(self,**kwargs):
     sampling = {}
     for dk in self.drivers:
         if not dk=='atmosphere':
+            self.logger.debug("Timing:%s",dk)
             d = self.drivers[dk]
             if d.delay>0:
                 add_item(d.delay,dk,'delay')
-            add_item(d.sampling_rate,dk,'update')
+            if np.isinf(d.sampling_rate):
+                add_item(d.delay,dk,'update')
+            else:
+                add_item(d.sampling_rate,dk,'update')
             for ok in d.outputs:
                 o = d.outputs[ok]
-                add_item(o.sampling_rate,dk,ok)
+                if np.isinf(o.sampling_rate):
+                    add_item(d.delay,dk,ok)
+                else:
+                    add_item(o.sampling_rate,dk,ok)
 
     s = sorted(sampling)
     [make_nodes(_) for _ in s]
