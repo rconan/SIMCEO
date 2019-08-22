@@ -20,15 +20,16 @@ drivers:
         sampling_rate: 500 # [sample]
         size: 0
         logs:
-          decimation: 500
+          decimation: 1
       segment_tiptilt:
         size: 14
         logs:
           decimation: 10
       n_valid_lenslet:
+        sampling_rate: .Inf
         size: 1
         logs:
-          decimation: 0
+          decimation: 1
   M2TT_controller:
     server: false
     delay: 0

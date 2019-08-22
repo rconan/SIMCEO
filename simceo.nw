@@ -962,7 +962,8 @@ class Timer(object):
         print('Elapsed time: %s' % (time.time() - self.tstart))
 
 class DOS(threading.Thread):
-    def __init__(self,path_to_config_dir,verbose=logging.INFO):
+    def __init__(self,path_to_config_dir,verbose=logging.INFO,
+                 mode='ready'):
 
         threading.Thread.__init__(self)
 
@@ -974,7 +975,9 @@ class DOS(threading.Thread):
         with open(cfg_file) as f:
             self.cfg = yaml.load(f)
 
-        self.agent = broker(self.cfg['simulation']['server']['IP'])
+        self.agent = None
+        if mode=='ready':
+            self.agent = broker(self.cfg['simulation']['server']['IP'])
 
         self.N_SAMPLE = int(self.cfg['simulation']['sampling frequency']*
                             self.cfg['simulation']['duration'])
@@ -992,6 +995,9 @@ class DOS(threading.Thread):
             self.cfg['simulation']['duration'],
             self.cfg['simulation']['sampling frequency'],
             self.N_SAMPLE))
+
+        if mode=='check timing':
+            self.diagram(filename=path_to_config_dir.replace('/','_'),format='png')
 
     <<starting the simulation>>
 
@@ -1276,6 +1282,8 @@ class Driver:
     def __init__(self,tau,tag):
         self.tau = tau
         self.tag = tag
+        self.delay = 0
+        self.sampling_rate = 1
     def start(self):
         pass
     def init(self):
@@ -1399,15 +1407,9 @@ def output(self,step):
                             v.size = __red.size
                             v.data = np.zeros(__red.shape)
                             v.data[...] = __red
-                        if v.logs is not None:
-                            try:
-                                if step%v.logs.decimation==0:
-                                    self.logger.debug('LOGGING')
-                                    v.logs.add(v.data.copy())
-                            except ZeroDivisionError:
-                                self.logger.debug('LOGGING')
-                                v.logs.add(v.data.copy())
-                                v.logs.decimation=np.Inf
+                        if v.logs is not None and step%v.logs.decimation==0:
+                            self.logger.debug('LOGGING')
+                            v.logs.add(v.data.copy())
 
 def terminate(self):
     self.logger.debug('Terminating!')
@@ -1600,7 +1602,7 @@ It is produced with the [[graphviz]] module.
 from graphviz import Digraph
 @
 <<timing diagram>>=
-def diagram(self):
+def diagram(self,**kwargs):
     def add_item(sample_rate,driver_name,method):
         if not sample_rate in sampling:
             sampling[sample_rate] = {}
@@ -1609,12 +1611,13 @@ def diagram(self):
         else:
             sampling[sample_rate][driver_name] += [method]
     def make_nodes(_s_):
-        ss = str(_s_)
-        c = Digraph(ss)
-        c.attr(rank='same')
-        c.node(ss,time_label(_s_))
-        [c.node(ss+'_'+_,make_label(_,sampling[_s_][_])) for _ in sampling[_s_]]
-        return c
+        if not np.isinf(_s_):
+            ss = str(_s_)
+            c = Digraph(ss)
+            c.attr(rank='same')
+            c.node(ss,time_label(_s_))
+            [c.node(ss+'_'+_,make_label(_,sampling[_s_][_])) for _ in sampling[_s_]]
+            main.subgraph(c)
     def make_label(d,dv):
         label = "<TR><TD><B>{}</B></TD></TR>".format(d)
         for v in dv:
@@ -1637,19 +1640,21 @@ def diagram(self):
 
     sampling = {}
     for dk in self.drivers:
-        d = self.drivers[dk]
-        if d.delay>0:
-            add_item(d.delay,dk,'delay')
-        add_item(d.sampling_rate,dk,'update')
-        for ok in d.outputs:
-            o = d.outputs[ok]
-            add_item(o.sampling_rate,dk,'output')
+        if not dk=='atmosphere':
+            d = self.drivers[dk]
+            if d.delay>0:
+                add_item(d.delay,dk,'delay')
+            add_item(d.sampling_rate,dk,'update')
+            for ok in d.outputs:
+                o = d.outputs[ok]
+                add_item(o.sampling_rate,dk,ok)
 
     s = sorted(sampling)
-    [main.subgraph(make_nodes(_)) for _ in s]
+    [make_nodes(_) for _ in s]
 
     for k in range(1,len(s)):
-        main.edge(str(s[k-1]),str(s[k]))
+        if not np.isinf(s[k]):
+            main.edge(str(s[k-1]),str(s[k]))
 
     for s in sampling:
         for d in sampling[s]:
@@ -1658,15 +1663,18 @@ def diagram(self):
                 for ik in self.drivers[d].inputs:
                     data = self.drivers[d].inputs[ik]
                     if data.lien is not None:
-                        main.edge(search_method(data.lien[0],'output'),
+                        main.edge(search_method(data.lien[0],data.lien[1]),
                                   '{0}_{1}:{1}_update'.format(str(s),d))
                 for ok in self.drivers[d].outputs:
                     data = self.drivers[d].outputs[ok]
                     if data.lien is not None:
-                        main.edge('{0}_{1}:{1}_output'.format(str(s),d),
+                        main.edge('{0}_{1}:{1}_{2}'.format(str(s),d,ok),
                                   search_method(data.lien[0],'update'))
 
-    return sampling,main
+    if kwargs:
+        main.render(**kwargs)
+    else:
+        return sampling,main
 @
 
 \subsection{Main}
