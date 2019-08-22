@@ -26,9 +26,10 @@ drivers:
         logs:
           decimation: 10
       n_valid_lenslet:
+        sampling_rate: .Inf
         size: 1
         logs:
-          decimation: 0
+          decimation: 1
   M2TT_controller:
     server: false
     delay: 0
