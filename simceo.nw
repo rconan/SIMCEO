@@ -1369,8 +1369,20 @@ self.outputs       = {}
 if 'outputs' in kwargs:
     for k,v in kwargs['outputs'].items():
         self.logger.info('New output: %s',k)
+        if not 'sampling_rate' in v:
+            v['sampling_rate']=self.sampling_rate
+        if v['sampling_rate']<self.sampling_rate:
+            if v['sampling_rate']!=1:
+                self.logger.error('The driver output rate cannot be less than the update rate!')
+            self.logger.warning('Changing the output rate to match the update rate!')
+            v['sampling_rate'] = self.sampling_rate
         if 'logs' in v:
             logs.add(tag,k,v['logs']['decimation'])
+            if v['logs']['decimation']<v['sampling_rate']:
+                if v['logs']['decimation']!=1:
+                    self.logger.error('The log decimation rate cannot be less than the output rate!')
+                self.logger.warning('Changing the decimation rate to match the output rate!')
+                v['logs']['decimation'] = v['sampling_rate']
             v['logs'] = logs.entries[tag][k]
             self.logger.info('Output logged in!')
         self.outputs[k] = Output(k,**v)
