@@ -1377,7 +1377,7 @@ if 'outputs' in kwargs:
             self.logger.warning('Changing the output rate to match the update rate!')
             v['sampling_rate'] = self.sampling_rate
         if 'logs' in v:
-            logs.add(tag,k,v['logs']['decimation'])
+            logs.add(tag,k,v['logs']['decimation'],self.delay)
             if v['logs']['decimation']<v['sampling_rate']:
                 if v['logs']['decimation']!=1:
                     self.logger.error('The log decimation rate cannot be less than the output rate!')
@@ -1543,26 +1543,27 @@ class Atmosphere(Driver):
 Driver output data can be logged in using the [[Logs]] class:
 <<dos.py>>=
 class Entry:
-    def __init__(self,tau,decimation):
+    def __init__(self,tau,decimation,delay):
         self.tau = tau
         self.decimation = decimation
+        self.delay = delay
         self.data = []
     def add(self,value):
         self.data += [value]
     @property
     def timeSeries(self):
-        time   = np.arange(len(self.data))*self.decimation*self.tau
+        time   = (np.arange(len(self.data))*self.decimation+self.delay)*self.tau
         values = np.vstack(self.data) if self.data[0].ndim<2 else np.dstack(self.data)
         return time,values
 class Logs:
     def __init__(self,sampling_time):
         self.sampling_time = sampling_time
         self.entries = {}
-    def add(self,driver,output,decimation):
+    def add(self,driver,output,decimation,delay=0):
         if driver in self.entries:
-            self.entries[driver][output] = Entry(self.sampling_time,decimation)
+            self.entries[driver][output] = Entry(self.sampling_time,decimation,delay)
         else:
-            self.entries[driver] = {output:Entry(self.sampling_time,decimation)}
+            self.entries[driver] = {output:Entry(self.sampling_time,decimation,delay)}
     def __repr__(self):
         if self.entries:
             line = ["The 'logs' has {} entries:".format(self.N_entries)]
