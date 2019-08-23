@@ -505,9 +505,9 @@ The message that triggers the call to the \emph{Start} method is
             attr = source_attributes[key]
             if isinstance(attr,dict):
                 for kkey in attr:
-                    setattr(getattr(src,key),kkey,atrr[kkey])
+                    setattr(getattr(self.src,key),kkey,attr[kkey])
             else:
-                setattr(src,key,attr)
+                setattr(self.src,key,attr)
         self.src.reset()
         self.gmt.reset()
         self.gmt.propagate(self.src)
@@ -939,10 +939,11 @@ parameter files reside.
 <<dos imports>>=
 import os
 import time
-import yaml
 import logging
 import threading
 import numpy as np
+from ruamel.yaml import YAML
+yaml=YAML(typ='safe')
 from . import driver
 <<dos.py>>=
 <<dos imports>>
@@ -1133,14 +1134,15 @@ def associate(self,prm_file):
                                        'calibration_source_args':None,
                                        'calibrate_args':None})
 
-        if 'source_attributes' in prm['source']:
-            if 'rays' in prm['source']['source_attributes'] and \
-               'rot_angle' in  prm['source']['source_attributes']['rays'] and \
-               isinstance(prm['source']['source_attributes']['rays']['rot_angle'],dict):
-                prm['source']['source_attributes']['rays']['rot_angle'] = \
-                  np.asarray(prm['source']['source_attributes']['rays']['rot_angle']['value'])*\
-                   units[prm['source']['source_attributes']['rays']['rot_angle']['units']]
-                self.msg_args['Start'].update({'source_attributes':prm['source']['source_attributes']})
+        if 'source_attributes' in prm:
+            src_attr = prm['source_attributes'] 
+            if 'rays' in src_attr and \
+               'rot_angle' in  src_attr['rays'] and \
+               isinstance(src_attr['rays']['rot_angle'],dict):
+                src_attr['rays']['rot_angle'] = \
+                  np.asarray(src_attr['rays']['rot_angle']['value'])*\
+                   units[src_attr['rays']['rot_angle']['units']]
+                self.msg_args['Start'].update({'source_attributes':src_attr})
 
         if prm['sensor']['class'] is not None:
             self.msg_args['Start']['sensor_args'].update(prm['sensor']['args'])
@@ -1266,7 +1268,8 @@ The driver module defines classes that are interfaced to devices either of the
 server or on the client.
 <<driver imports>>=
 import numpy as np
-import yaml
+from ruamel.yaml import YAML
+yaml=YAML(typ='safe')
 import logging
 <<driver.py>>=
 <<driver imports>>
