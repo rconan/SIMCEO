@@ -12,6 +12,7 @@ drivers:
       Rxy:
         size: [7,2]
   wfs24:
+    delay: 0
     outputs:
       M2TT:
         sampling_rate: 1 # [sample]
