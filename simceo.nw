@@ -1136,13 +1136,16 @@ def associate(self,prm_file):
 
         if 'source_attributes' in prm:
             src_attr = prm['source_attributes'] 
+            src_attr.append({'timeStamp':self.delay*self.tau})
             if 'rays' in src_attr and \
                'rot_angle' in  src_attr['rays'] and \
                isinstance(src_attr['rays']['rot_angle'],dict):
                 src_attr['rays']['rot_angle'] = \
                   np.asarray(src_attr['rays']['rot_angle']['value'])*\
                    units[src_attr['rays']['rot_angle']['units']]
-                self.msg_args['Start'].update({'source_attributes':src_attr})
+        else:
+            src_attr = {'timeStamp':self.delay*self.tau}
+        self.msg_args['Start'].update({'source_attributes':src_attr})
 
         if prm['sensor']['class'] is not None:
             self.msg_args['Start']['sensor_args'].update(prm['sensor']['args'])
@@ -1460,10 +1463,29 @@ class Client(Driver):
 
     <<Client device parameter loading and formatting>>
 @ %def Client
+In debug mode, the norm of the vector $u$, $y$ and $x$ are logged at each time
+step into a Panda dataframe.
+<<driver imports>>=
+import pandas as pd
+<<client debug mode (init)>>=
+if self.logger.level==10:
+    self.UYX = pd.DataFrame(columns=['|U|','|Y|','|X|'])
+@
+The dataframe is updated at each update call:
+<<driver imports>>=
+from numpy.linalg import norm
+import pandas as pd
+<<client debug mode (update)>>=
+if self.logger.level==10:
+    self.UYX.loc[step] = [norm(u),
+                          norm(self.__yout),
+                          norm(self.__xout)]
+@
+The dynamic behavior of the [[Client]] is capture in the following classes:
 <<Client methods>>=
 def start(self):
     self.logger.debug('Starting!')
-    pass
+    <<client debug mode (init)>>
 def init(self):
     self.logger.debug('Initializing!')
     self.system = self.system._as_ss()
@@ -1476,6 +1498,7 @@ def update(self,step):
         self.logger.debug('u: %s',u)
         self.__yout = np.dot(self.system.C, self.__xout) + np.dot(self.system.D, u)
         self.__xout = np.dot(self.system.A, self.__xout) + np.dot(self.system.B, u)
+        <<client debug mode (update)>>
 
 def output(self,step):
     if step>=self.delay:
