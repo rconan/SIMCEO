@@ -1,19 +1,20 @@
 simulation:
-  sampling frequency: 500 # [Hertz]
-  duration: 1 # [seconds]
+  sampling frequency: 1 # [Hertz]
+  duration: 10 # [seconds]
   server:
-    IP: 34.213.27.234
+    IP: 127.0.0.1
+#    IP: 34.213.27.234
 drivers:
   M1:
-    sampling_rate: 10 # [sample]
+    sampling_rate: 1 # [sample]
     inputs:
       TxyzRxyz:
         size: [7,6]
-#  M2:
-#    sampling_rate: 10 # [sample]
-#    inputs:
-#      TxyzRxyz:
-#        size: [7,6]
+  M2:
+    sampling_rate: 1 # [sample]
+    inputs:
+      TxyzRxyz:
+        size: [7,6]
 #  wfs24:
 #    delay: 200 # [sample]
 #    outputs:
@@ -22,14 +23,15 @@ drivers:
 #        size: 14
   wfs48:
     delay: 0 # [sample]
-    sampling_rate: 10 # [sample]
+    sampling_rate: 1 # [sample]
     outputs:
       M12_RBM:
-        sampling_rate: 4000 # [sample]
+        sampling_rate: 1 # [sample]
         size: 84
+COMMENTS:
   AGWS_ctrlr:
     server: false
-    sampling_rate: 10 # [sample]
+    sampling_rate: 1 # [sample]
     inputs:
 #      wfs24 data:
 #        lien: [wfs24,M2TT]
@@ -37,7 +39,7 @@ drivers:
         lien: [wfs48,M12_RBM]
     outputs:
       M1 command:
-        sampling_rate: 10 # [sample]
+        sampling_rate: 1 # [sample]
         lien: [M1,TxyzRxyz] 
 #      M2 command:
 #        sampling_rate: 10 # [sample]
