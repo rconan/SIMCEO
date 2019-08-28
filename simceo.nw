@@ -402,14 +402,16 @@ The message that triggers the call to the \emph{Update} method is
                 state[mirror]['Txyz'][:,2] += data.ravel().copy()
             elif key=="mode_coefs":
                 state[mirror]['modes'][:] += data.copy()
+            self.logger.debug('GMT STATE: %s',state)
             self.gmt^=state
 @
 \paragraph{InitializeConditions}
 
 <<SGMT>>=
     def Init(self, state={}):
-        if state:
-            self.state0.update(state)
+        for mirror in state:
+            self.state0[mirror].update(state[mirror])
+            self.logger.info("GMT state set to %s",self.state0)
 @
 \paragraph{Outputs}
 
@@ -1124,6 +1126,9 @@ def associate(self,prm_file):
     if 'mirror' in prm:
         self.msg['class_id'] = 'GMT'
         self.msg_args['Start'].update(prm)
+        if 'state' in prm:
+            self.msg_args['Init']['state'] = {prm['mirror']:{k:np.array(v) for k,v in prm['state'].items()}}
+            self.msg_args['Start'].pop('state')
         self.msg_args['Update']['mirror'] = prm['mirror']
         self.msg_args['Update']['inputs'].update(\
                 {k_i:v_i.data for k_i,v_i in self.inputs.items()})
