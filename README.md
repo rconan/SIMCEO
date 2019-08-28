@@ -133,10 +133,26 @@ drivers:
         size: [7,n_mode]
 ```
 Both `M1.yaml` and `M2.yaml` have the same syntax.
+State represents the initial state of M1 and M2 segments: translation `Txyz`, rotation `Rxyz` and modal coefficients `modes`.
 If the degrees of freedom are only the rigid body motions, then the file is:
 ```yaml
 mirror: # M1 or M2
 mirror_args: {}
+state:
+  Txyz:
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+  Rxyz:
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
 ```
 
 if the mirror modes are included, then the file becomes:
@@ -145,6 +161,21 @@ mirror: # M1 or M2
 mirror_args:
   mirror_modes: # zernike ,Karhunen-Loeve or bending modes
   N_MODE: # The number of modes
+state:
+  Txyz:
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+  Rxyz:
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
 ```
 
 ## Optical path driver
