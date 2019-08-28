@@ -21,12 +21,15 @@ sensor:
     threshold: 0.5
 interaction matrices: 
   calibrations:
-    AGWS:
+    M12_RBM:
       method_id: AGWS_calibrate
       args:
-        decoupled: true
-        filterMirrorRotation: true
+        coupled: true
+        filterMirrorRotation: false
         stroke: [1.0e-6,1.0e-6,1.0e-6,1.0e-6,1.0e-6]
         fluxThreshold: 0.5
         includeBM: false
-  filename: AGWS_decoupled_rotfilt
+  pseudo_inverse:
+    n_threshold: [12]
+    insert_zeros: [[41,82]]
+  filename: AGWS_coupled_rotfilt

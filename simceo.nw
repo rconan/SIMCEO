@@ -41,7 +41,7 @@
 % \subsection{UBJSON}
 % \label{sec:ubjson}
 
-% Universal Binary JSON (UBJSON\footnote{\url{http://ubjson.org/}}) is the message format used to exchange data between SIMCEO client and server.
+% Universal Binary JSON (UBJSON\footnote{\url{http://ubjson.org/}}) is the message format used to exchanumpynge data between SIMCEO client and server.
 % The Matlab UBJSON encoder and decoder is JSONLAB.
 % SIMCEO comes with its own version of JSONLAB that fixes a few bugs.
 % To add JSONLAB to the Matlab search path, move Matlab current folder to SIMCEO folder and at the Matlab prompt enter:
@@ -95,6 +95,7 @@ import scipy.linalg as LA
 import pickle
 import zlib
 import logging
+import copy
 
 logging.basicConfig()
 
@@ -333,6 +334,7 @@ class SGMT(Sfunction):
         self.logger.setLevel(verbose)
         self.logger.info('Instantiate')
         self.gmt  = ceo.GMT_MX()
+        self.state0 = copy.deepcopy(self.gmt.state)
 
     def Terminate(self, args=None):
         self.logger.info('Terminate')
@@ -390,25 +392,24 @@ The message that triggers the call to the \emph{Update} method is
         for key in inputs:
             data = np.array( inputs[key], order='C', dtype=np.float64 )
             #data = np.transpose( np.reshape( data , (-1,7) ) )
+            state = copy.deepcopy(self.state0)
             if key=="TxyzRxyz":
-                self.gmt[mirror].motion_CS.origin[:]       = data[:,:3]
-                self.gmt[mirror].motion_CS.euler_angles[:] = data[:,3:]
-                self.gmt[mirror].motion_CS.update()
+                state[mirror]['Txyz'][:] += data[:,:3].copy()
+                state[mirror]['Rxyz'][:] += data[:,3:].copy()
             elif key=="Rxy":
-                self.gmt[mirror].motion_CS.euler_angles[:,:2] = data
-                self.gmt[mirror].motion_CS.update()
+                state[mirror]['Rxyz'][:,:2] += data.copy()
             elif key=="Tz":
-                self.gmt[mirror].motion_CS.origin[:,2] = data.ravel()
-                self.gmt[mirror].motion_CS.update()
+                state[mirror]['Txyz'][:,2] += data.ravel().copy()
             elif key=="mode_coefs":
-                    self.gmt[mirror].modes.a[:] = data
-                    self.gmt[mirror].modes.update()
+                state[mirror]['modes'][:] += data.copy()
+            self.gmt^=state
 @
 \paragraph{InitializeConditions}
 
 <<SGMT>>=
-    def Init(self, args=None):
-        pass
+    def Init(self, state={}):
+        if state:
+            self.state0.update(state)
 @
 \paragraph{Outputs}
 
@@ -768,11 +769,18 @@ The message that triggers a call to the \emph{InitializeConditions} method is
                     self.gmt.reset()
                     self.src.reset()
                     self.sensor.reset()
-                    D = getattr( self.gmt, calibs["method_id"] )( \
+                    if calibs["method_id"]=="AGWS_calibrate":
+                        C = getattr( self.gmt, calibs["method_id"] )( \
+                                        self.sensor, 
+                                        self.src,
+                                        **calibs["args"],
+                                        calibrationVaultKwargs=pseudo_inverse)
+                    else:
+                        D = getattr( self.gmt, calibs["method_id"] )( \
                                         self.sensor, 
                                         self.src,
                                         **calibs["args"])
-                    C = ceo.CalibrationVault([D],**pseudo_inverse)
+                        C = ceo.CalibrationVault([D],**pseudo_inverse)
                     self.gmt.reset()
                     self.src.reset()
                     self.sensor.reset()
