@@ -107,19 +107,25 @@ filename: phase_screen_meaningfull_name.bin
 The section of a mirror driver is either `M1` or `M2` and the parameters of a mirror are in either `M1.yaml` or `M2.yaml`.
 There are only inputs to the mirrors:
 
- * the 6 rigid body modes of each segment: `TxyzRxyz`
+ * the 3 rigid body translations of each segment: `Txyz`
+ * the 3 rigid body rotations of each segment: `Rxyz`
  * the tip and tilt of each segment: `Rxy`
- * the mirror mode shape coefficients: `mode_coefs`
+ * the piston of each segment: `Tz`
+ * the mirror mode shape coefficients: `modes`
 
 ```yaml
 drivers:
   M1:
     inputs:
-      TxyzRxyz:
-        size: [7,6]
+      Txyz:
+        size: [7,3]
+      Tz:
+        size: [7,1]
+      Rxyz:
+        size: [7,3]
       Rxy:
         size: [7,2]
-      mode_coefs:
+      modes:
         size: [7,n_mode]
   M2:
     inputs:

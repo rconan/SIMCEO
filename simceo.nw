@@ -381,18 +381,28 @@ The message that triggers the call to the \emph{Update} method is
     "mirror": "M1"|"M2",
     "inputs":
       {
-        "TxyzRxyz": null,
-        "mode_coefs": null
+        "Txyz": null,
+        "Rxyz": null,
+        "modes": null
       }
   }
 }
 @
 <<SGMT>>=
     def Update(self, mirror=None, inputs=None):
-        for key in inputs:
-            data = np.array( inputs[key], order='C', dtype=np.float64 )
+        state = copy.deepcopy(self.state0)
+        for dof in inputs:
+            if dof=='Rxy':
+                data = np.zeros((7,3))
+                data[:,:2] = np.asarray( inputs[dof], order='C', dtype=np.float64 )
+                dof = 'Rxyz'
+            if dof=='Tz':
+                data = np.zeros((7,3))
+                data[:,2] = np.asarray( inputs[dof], order='C', dtype=np.float64 )
+                dof = 'Txyz'
             #data = np.transpose( np.reshape( data , (-1,7) ) )
-            state = copy.deepcopy(self.state0)
+            state[mirror][dof][:] += data
+            """
             if key=="TxyzRxyz":
                 state[mirror]['Txyz'][:] += data[:,:3].copy()
                 state[mirror]['Rxyz'][:] += data[:,3:].copy()
@@ -402,8 +412,9 @@ The message that triggers the call to the \emph{Update} method is
                 state[mirror]['Txyz'][:,2] += data.ravel().copy()
             elif key=="mode_coefs":
                 state[mirror]['modes'][:] += data.copy()
-            self.logger.debug('GMT STATE: %s',state)
-            self.gmt^=state
+            """
+        self.logger.debug('GMT STATE: %s',state)
+        self.gmt^=state
 @
 \paragraph{InitializeConditions}
 
