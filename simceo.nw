@@ -396,10 +396,12 @@ The message that triggers the call to the \emph{Update} method is
                 data = np.zeros((7,3))
                 data[:,:2] = np.asarray( inputs[dof], order='C', dtype=np.float64 )
                 dof = 'Rxyz'
-            if dof=='Tz':
+            elif dof=='Tz':
                 data = np.zeros((7,3))
                 data[:,2] = np.asarray( inputs[dof], order='C', dtype=np.float64 )
                 dof = 'Txyz'
+            else:
+                data = np.asarray( inputs[dof], order='C', dtype=np.float64 )
             #data = np.transpose( np.reshape( data , (-1,7) ) )
             state[mirror][dof][:] += data
             """

@@ -13,8 +13,10 @@ drivers:
   M2:
     sampling_rate: 1 # [sample]
     inputs:
-      TxyzRxyz:
-        size: [7,6]
+      Txyz:
+        size: [7,3]
+      Rxyz:
+        size: [7,3]
   wfs48:
     delay: 0 # [sample]
     sampling_rate: 1 # [sample]
@@ -36,9 +38,16 @@ drivers:
 #      M1 command:
 #        sampling_rate: 1 # [sample]
 #        lien: [M1,TxyzRxyz] 
-      M2 command:
+      M2 Txyz:
         sampling_rate: 1 # [sample]
-        lien: [M2,TxyzRxyz] 
+        lien: [M2,Txyz] 
+        logs:
+          decimation: 1
+      M2 Rxyz:
+        sampling_rate: 1 # [sample]
+        lien: [M2,Rxyz] 
+        logs:
+          decimation: 1
   science:
     outputs:
       wfe_rms:
