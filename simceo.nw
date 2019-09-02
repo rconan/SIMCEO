@@ -1546,6 +1546,10 @@ def output(self,step):
                                 self.__yout[0,a:b].reshape(self.outputs[ok].size)
                     a = b
                 """
+                if v.logs is not None and (step-self.delay)%v.logs.decimation==0:
+                    self.logger.debug('LOGGING')
+                    v.logs.add(v.data.copy())
+
 
 def terminate(self):
     self.logger.debug('Terminating!')
