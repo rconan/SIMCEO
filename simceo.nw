@@ -1046,8 +1046,8 @@ tau = 1/self.cfg['simulation']['sampling frequency']
 self.logs = Logs(tau)
 self.drivers = {}
 for d,v in self.cfg['drivers'].items():
-    prm_file = os.path.join(path_to_config_dir,d+'.yaml')
-    if os.path.isfile(prm_file):
+    prm_file = os.path.join(path_to_config_dir,d)
+    if os.path.isfile(prm_file+'.yaml') or os.path.isfile(prm_file+'.pickle'):
         self.logger.info('New driver: %s',d)
         if 'server' in v and v['server'] is False:
             self.drivers[d] = driver.Client(tau,d,
@@ -1122,20 +1122,24 @@ is associated to the driver
 <<device to driver association>>=
 for k_d in self.drivers:
     d = self.drivers[k_d]
-    device = os.path.join(path_to_config_dir,k_d+'.yaml')
-    d.associate(device)
+    device = os.path.join(path_to_config_dir,k_d)
+    try:
+        with open(device+'.yaml') as f:
+            prm = yaml.load(f)
+    except:
+        with open(device+'.pickle','rb') as f:
+            prm = pickle.load(f)
+    d.associate(prm)
 @
 The device parameter are formatted into messages that will be used to
 communicate to the server.    
 <<Server device parameter loading and formatting>>=
-def associate(self,prm_file):
+def associate(self,prm):
     base_units = np.pi/180
     units = {'degree': base_units,
              'arcmin': base_units/60,
              'arcsec': base_units/60/60,
              'mas': base_units/60/60/1e3}
-    with open(prm_file) as f:
-        prm = yaml.load(f)
     if 'mirror' in prm:
         self.msg['class_id'] = 'GMT'
         self.msg_args['Start'].update(prm)
@@ -1179,24 +1183,12 @@ def associate(self,prm_file):
         if 'interaction matrices' in prm:
             self.msg_args['Init'].update(prm['interaction matrices'])
         self.msg_args['Outputs']['outputs'] += [k_o for k_o in self.outputs]
-<<driver imports>>=
+<<control imports>>=
 from scipy import signal
+import pickle
 <<Client device parameter loading and formatting>>=
-def associate(self,prm_file):
-    with open(prm_file) as f:
-        prm = yaml.load(f)
-    if 'transfer function' in prm['system']:
-        system = prm['system']
-        self.system = signal.dlti(system['transfer function']['num'],
-                                  system['transfer function']['denom'])
-    elif 'zeros poles gain' in prm['system']:
-        system = prm['system']
-        self.system = signal.dlti(system['transfer function']['zeros'],
-                                  system['transfer function']['poles'],
-                                  system['transfer function']['gain'])
-    else:
-        raise Exception("System should be of the type "+\
-                        "'transfer function' or 'zeros poles gains'")
+def associate(self,prm):
+    self.system = getattr(control,'System')(**prm['System'])
 @
 Next we check if an atmosphere is define
 @
@@ -1482,8 +1474,6 @@ class Client(Driver):
                  verbose=logging.INFO,**kwargs):
         <<commom server/client driver>>
         self.system = None
-        self.__xout = np.zeros(0)
-        self.__yout = np.zeros(0)
 
     <<Client methods>>
 
@@ -1500,7 +1490,6 @@ if self.logger.level==10:
 The dataframe is updated at each update call:
 <<driver imports>>=
 from numpy.linalg import norm
-import pandas as pd
 <<client debug mode (update)>>=
 if self.logger.level==10:
     self.UYX.loc[step] = [norm(u),
@@ -1511,20 +1500,15 @@ The dynamic behavior of the [[Client]] is capture in the following classes:
 <<Client methods>>=
 def start(self):
     self.logger.debug('Starting!')
-    <<client debug mode (init)>>
 def init(self):
     self.logger.debug('Initializing!')
-    self.system = self.system._as_ss()
-    self.__xout = np.zeros((1,self.system.A.shape[0]))
-    self.__yout = np.zeros((1, self.system.C.shape[0]))
+    self.system.init()
 def update(self,step):
     if step>=self.delay and (step-self.delay)%self.sampling_rate==0:
         self.logger.debug('Updating!')
         u = np.hstack([_.data.reshape(1,-1) for _  in self.inputs.values()])
+        self.system.update(u)
         self.logger.debug('u: %s',u)
-        self.__yout = np.dot(self.system.C, self.__xout) + np.dot(self.system.D, u)
-        self.__xout = np.dot(self.system.A, self.__xout) + np.dot(self.system.B, u)
-        <<client debug mode (update)>>
 
 def output(self,step):
     if step>=self.delay:
@@ -1535,17 +1519,8 @@ def output(self,step):
                 self.logger.debug('Outputing %s!',k)
                 b = a + v.data.size
                 self.logger.debug('%s [%s]: [%d,%d]',k,v.size,a,b)
-                v.data[...] = self.__yout[0,a:b].reshape(v.size)
+                v.data[...] = self.system.output()[0,a:b].reshape(v.size)
                 a = b
-                """
-                a = 0
-                for ok in self.outputs:
-                    b = a + self.outputs[ok].data.size
-                    self.logger.debug('%s [%s]: [%d,%d]',ok,self.outputs[ok].size,a,b)
-                    self.outputs[ok].data[...] = \
-                                self.__yout[0,a:b].reshape(self.outputs[ok].size)
-                    a = b
-                """
                 if v.logs is not None and (step-self.delay)%v.logs.decimation==0:
                     self.logger.debug('LOGGING')
                     v.logs.add(v.data.copy())
@@ -1554,6 +1529,43 @@ def output(self,step):
 def terminate(self):
     self.logger.debug('Terminating!')
 @
+
+\paragraph{System}
+
+<<driver imports>>=
+from . import control
+@
+<<control.py>>=
+<<control imports>>
+import numpy as np
+class System:
+    def __init__(self,**kwargs):
+        if 'transfer function' in kwargs:
+            self.system = signal.dlti(kwargs['transfer function']['num'],
+                                      kwargs['transfer function']['denom'])
+        elif 'zeros poles gain' in kwargs:
+            self.system = signal.dlti(kwargs['transfer function']['zeros'],
+                                      kwargs['transfer function']['poles'],
+                                      kwargs['transfer function']['gain'])
+        else:
+            raise Exception("System should be of the type "+\
+                            "'transfer function' or 'zeros poles gains'")
+        self.__xout = np.zeros(0)
+        self.__yout = np.zeros(0)
+
+    def init(self):
+        self.system = self.system._as_ss()
+        self.__xout = np.zeros((1,self.system.A.shape[0]))
+        self.__yout = np.zeros((1, self.system.C.shape[0]))
+
+    def update(self,u):
+        self.__yout = np.dot(self.system.C, self.__xout) + np.dot(self.system.D, u)
+        self.__xout = np.dot(self.system.A, self.__xout) + np.dot(self.system.B, u)
+
+    def output(self):
+        return self.__yout
+@
+
 \subsubsection{Atmosphere}
 \label{sec:driver.atmosphere}
 
@@ -1584,9 +1596,7 @@ class Atmosphere(Driver):
         reply = self.server._recv_()
         self.logger.info('%s',reply)
 
-    def associate(self,prm_file):
-        with open(prm_file) as f:
-            prm = yaml.load(f)
+    def associate(self,prm):
         self.msg['args'].update(prm)
 @ %def Atmosphere
 
