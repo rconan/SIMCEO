@@ -41,7 +41,7 @@
 % \subsection{UBJSON}
 % \label{sec:ubjson}
 
-% Universal Binary JSON (UBJSON\footnote{\url{http://ubjson.org/}}) is the message format used to exchange data between SIMCEO client and server.
+% Universal Binary JSON (UBJSON\footnote{\url{http://ubjson.org/}}) is the message format used to exchanumpynge data between SIMCEO client and server.
 % The Matlab UBJSON encoder and decoder is JSONLAB.
 % SIMCEO comes with its own version of JSONLAB that fixes a few bugs.
 % To add JSONLAB to the Matlab search path, move Matlab current folder to SIMCEO folder and at the Matlab prompt enter:
@@ -95,6 +95,7 @@ import scipy.linalg as LA
 import pickle
 import zlib
 import logging
+import copy
 
 logging.basicConfig()
 
@@ -333,6 +334,7 @@ class SGMT(Sfunction):
         self.logger.setLevel(verbose)
         self.logger.info('Instantiate')
         self.gmt  = ceo.GMT_MX()
+        self.state0 = copy.deepcopy(self.gmt.state)
 
     def Terminate(self, args=None):
         self.logger.info('Terminate')
@@ -379,33 +381,50 @@ The message that triggers the call to the \emph{Update} method is
     "mirror": "M1"|"M2",
     "inputs":
       {
-        "TxyzRxyz": null,
-        "mode_coefs": null
+        "Txyz": null,
+        "Rxyz": null,
+        "modes": null
       }
   }
 }
 @
 <<SGMT>>=
     def Update(self, mirror=None, inputs=None):
-        for key in inputs:
-            data = np.array( inputs[key], order='C', dtype=np.float64 )
+        state = copy.deepcopy(self.state0)
+        for dof in inputs:
+            if dof=='Rxy':
+                data = np.zeros((7,3))
+                data[:,:2] = np.asarray( inputs[dof], order='C', dtype=np.float64 )
+                dof = 'Rxyz'
+            elif dof=='Tz':
+                data = np.zeros((7,3))
+                data[:,2] = np.asarray( inputs[dof], order='C', dtype=np.float64 )
+                dof = 'Txyz'
+            else:
+                data = np.asarray( inputs[dof], order='C', dtype=np.float64 )
             #data = np.transpose( np.reshape( data , (-1,7) ) )
+            state[mirror][dof][:] += data
+            """
             if key=="TxyzRxyz":
-                self.gmt[mirror].motion_CS.origin[:]       = data[:,:3]
-                self.gmt[mirror].motion_CS.euler_angles[:] = data[:,3:]
-                self.gmt[mirror].motion_CS.update()
+                state[mirror]['Txyz'][:] += data[:,:3].copy()
+                state[mirror]['Rxyz'][:] += data[:,3:].copy()
             elif key=="Rxy":
-                self.gmt[mirror].motion_CS.euler_angles[:,:2] = data
-                self.gmt[mirror].motion_CS.update()
+                state[mirror]['Rxyz'][:,:2] += data.copy()
+            elif key=="Tz":
+                state[mirror]['Txyz'][:,2] += data.ravel().copy()
             elif key=="mode_coefs":
-                    self.gmt[mirror].modes.a[:] = data
-                    self.gmt[mirror].modes.update()
+                state[mirror]['modes'][:] += data.copy()
+            """
+        self.logger.debug('GMT STATE: %s',state)
+        self.gmt^=state
 @
 \paragraph{InitializeConditions}
 
 <<SGMT>>=
-    def Init(self, args=None):
-        pass
+    def Init(self, state={}):
+        for mirror in state:
+            self.state0[mirror].update(state[mirror])
+            self.logger.info("GMT state set to %s",self.state0)
 @
 \paragraph{Outputs}
 
@@ -502,9 +521,9 @@ The message that triggers the call to the \emph{Start} method is
             attr = source_attributes[key]
             if isinstance(attr,dict):
                 for kkey in attr:
-                    setattr(getattr(src,key),kkey,atrr[kkey])
+                    setattr(getattr(self.src,key),kkey,attr[kkey])
             else:
-                setattr(src,key,attr)
+                setattr(self.src,key,attr)
         self.src.reset()
         self.gmt.reset()
         self.gmt.propagate(self.src)
@@ -765,11 +784,18 @@ The message that triggers a call to the \emph{InitializeConditions} method is
                     self.gmt.reset()
                     self.src.reset()
                     self.sensor.reset()
-                    D = getattr( self.gmt, calibs["method_id"] )( \
+                    if calibs["method_id"]=="AGWS_calibrate":
+                        C = getattr( self.gmt, calibs["method_id"] )( \
+                                        self.sensor, 
+                                        self.src,
+                                        **calibs["args"],
+                                        calibrationVaultKwargs=pseudo_inverse)
+                    else:
+                        D = getattr( self.gmt, calibs["method_id"] )( \
                                         self.sensor, 
                                         self.src,
                                         **calibs["args"])
-                    C = ceo.CalibrationVault([D],**pseudo_inverse)
+                        C = ceo.CalibrationVault([D],**pseudo_inverse)
                     self.gmt.reset()
                     self.src.reset()
                     self.sensor.reset()
@@ -936,10 +962,11 @@ parameter files reside.
 <<dos imports>>=
 import os
 import time
-import yaml
 import logging
 import threading
 import numpy as np
+from ruamel.yaml import YAML
+yaml=YAML(typ='safe')
 from . import driver
 <<dos.py>>=
 <<dos imports>>
@@ -959,7 +986,8 @@ class Timer(object):
         print('Elapsed time: %s' % (time.time() - self.tstart))
 
 class DOS(threading.Thread):
-    def __init__(self,path_to_config_dir,verbose=logging.INFO):
+    def __init__(self,path_to_config_dir,verbose=logging.INFO,
+                 show_timing=0):
 
         threading.Thread.__init__(self)
 
@@ -971,7 +999,9 @@ class DOS(threading.Thread):
         with open(cfg_file) as f:
             self.cfg = yaml.load(f)
 
-        self.agent = broker(self.cfg['simulation']['server']['IP'])
+        self.agent = None
+        if show_timing in [0,2]:
+            self.agent = broker(self.cfg['simulation']['server']['IP'])
 
         self.N_SAMPLE = int(self.cfg['simulation']['sampling frequency']*
                             self.cfg['simulation']['duration'])
@@ -989,6 +1019,9 @@ class DOS(threading.Thread):
             self.cfg['simulation']['duration'],
             self.cfg['simulation']['sampling frequency'],
             self.N_SAMPLE))
+
+        if show_timing>0:
+            self.diagram(filename=path_to_config_dir.replace('/','_'),format='png')
 
     <<starting the simulation>>
 
@@ -1013,8 +1046,8 @@ tau = 1/self.cfg['simulation']['sampling frequency']
 self.logs = Logs(tau)
 self.drivers = {}
 for d,v in self.cfg['drivers'].items():
-    prm_file = os.path.join(path_to_config_dir,d+'.yaml')
-    if os.path.isfile(prm_file):
+    prm_file = os.path.join(path_to_config_dir,d)
+    if os.path.isfile(prm_file+'.yaml') or os.path.isfile(prm_file+'.pickle'):
         self.logger.info('New driver: %s',d)
         if 'server' in v and v['server'] is False:
             self.drivers[d] = driver.Client(tau,d,
@@ -1089,23 +1122,30 @@ is associated to the driver
 <<device to driver association>>=
 for k_d in self.drivers:
     d = self.drivers[k_d]
-    device = os.path.join(path_to_config_dir,k_d+'.yaml')
-    d.associate(device)
+    device = os.path.join(path_to_config_dir,k_d)
+    try:
+        with open(device+'.yaml') as f:
+            prm = yaml.load(f)
+    except:
+        with open(device+'.pickle','rb') as f:
+            prm = pickle.load(f)
+    d.associate(prm)
 @
 The device parameter are formatted into messages that will be used to
 communicate to the server.    
 <<Server device parameter loading and formatting>>=
-def associate(self,prm_file):
+def associate(self,prm):
     base_units = np.pi/180
     units = {'degree': base_units,
              'arcmin': base_units/60,
              'arcsec': base_units/60/60,
              'mas': base_units/60/60/1e3}
-    with open(prm_file) as f:
-        prm = yaml.load(f)
     if 'mirror' in prm:
         self.msg['class_id'] = 'GMT'
         self.msg_args['Start'].update(prm)
+        if 'state' in prm:
+            self.msg_args['Init']['state'] = {prm['mirror']:{k:np.array(v) for k,v in prm['state'].items()}}
+            self.msg_args['Start'].pop('state')
         self.msg_args['Update']['mirror'] = prm['mirror']
         self.msg_args['Update']['inputs'].update(\
                 {k_i:v_i.data for k_i,v_i in self.inputs.items()})
@@ -1124,14 +1164,18 @@ def associate(self,prm_file):
                                        'calibration_source_args':None,
                                        'calibrate_args':None})
 
-        if 'source_attributes' in prm['source']:
-            if 'rays' in prm['source']['source_attributes'] and \
-               'rot_angle' in  prm['source']['source_attributes']['rays'] and \
-               isinstance(prm['source']['source_attributes']['rays']['rot_angle'],dict):
-                prm['source']['source_attributes']['rays']['rot_angle'] = \
-                  np.asarray(prm['source']['source_attributes']['rays']['rot_angle']['value'])*\
-                   units[prm['source']['source_attributes']['rays']['rot_angle']['units']]
-                self.msg_args['Start'].update({'source_attributes':prm['source']['source_attributes']})
+        if 'source_attributes' in prm:
+            src_attr = prm['source_attributes'] 
+            src_attr.append({'timeStamp':self.delay*self.tau})
+            if 'rays' in src_attr and \
+               'rot_angle' in  src_attr['rays'] and \
+               isinstance(src_attr['rays']['rot_angle'],dict):
+                src_attr['rays']['rot_angle'] = \
+                  np.asarray(src_attr['rays']['rot_angle']['value'])*\
+                   units[src_attr['rays']['rot_angle']['units']]
+        else:
+            src_attr = {'timeStamp':self.delay*self.tau}
+        self.msg_args['Start'].update({'source_attributes':src_attr})
 
         if prm['sensor']['class'] is not None:
             self.msg_args['Start']['sensor_args'].update(prm['sensor']['args'])
@@ -1139,24 +1183,13 @@ def associate(self,prm_file):
         if 'interaction matrices' in prm:
             self.msg_args['Init'].update(prm['interaction matrices'])
         self.msg_args['Outputs']['outputs'] += [k_o for k_o in self.outputs]
-<<driver imports>>=
+<<control imports>>=
 from scipy import signal
+import pickle
 <<Client device parameter loading and formatting>>=
-def associate(self,prm_file):
-    with open(prm_file) as f:
-        prm = yaml.load(f)
-    if 'transfer function' in prm['system']:
-        system = prm['system']
-        self.system = signal.dlti(system['transfer function']['num'],
-                                  system['transfer function']['denom'])
-    elif 'zeros poles gain' in prm['system']:
-        system = prm['system']
-        self.system = signal.dlti(system['transfer function']['zeros'],
-                                  system['transfer function']['poles'],
-                                  system['transfer function']['gain'])
-    else:
-        raise Exception("System should be of the type "+\
-                        "'transfer function' or 'zeros poles gains'")
+def associate(self,prm):
+    sys = list(prm.keys())[0] 
+    self.system = getattr(control,sys)(**prm[sys])
 @
 Next we check if an atmosphere is define
 @
@@ -1257,7 +1290,8 @@ The driver module defines classes that are interfaced to devices either of the
 server or on the client.
 <<driver imports>>=
 import numpy as np
-import yaml
+from ruamel.yaml import YAML
+yaml=YAML(typ='safe')
 import logging
 <<driver.py>>=
 <<driver imports>>
@@ -1273,6 +1307,8 @@ class Driver:
     def __init__(self,tau,tag):
         self.tau = tau
         self.tag = tag
+        self.delay = 0
+        self.sampling_rate = 1
     def start(self):
         pass
     def init(self):
@@ -1294,6 +1330,7 @@ keys and the values being an instance of the [[Inputs]] and [[Outputs]] classes.
 class IO:
     def __init__(self,tag,size=0, lien=None, logs=None):
         self.logger = logging.getLogger(tag)
+        self.logger.setLevel(logging.INFO)
         self.size = size
         self.data = np.zeros(size)
         self.lien = lien
@@ -1354,8 +1391,20 @@ self.outputs       = {}
 if 'outputs' in kwargs:
     for k,v in kwargs['outputs'].items():
         self.logger.info('New output: %s',k)
+        if not 'sampling_rate' in v:
+            v['sampling_rate']=self.sampling_rate
+        if v['sampling_rate']<self.sampling_rate:
+            if v['sampling_rate']!=1:
+                self.logger.error('The driver output rate cannot be less than the update rate!')
+            self.logger.warning('Changing the output rate to match the update rate!')
+            v['sampling_rate'] = self.sampling_rate
         if 'logs' in v:
-            logs.add(tag,k,v['logs']['decimation'])
+            logs.add(tag,k,v['logs']['decimation'],self.delay)
+            if v['logs']['decimation']<v['sampling_rate']:
+                if v['logs']['decimation']!=1:
+                    self.logger.error('The log decimation rate cannot be less than the output rate!')
+                self.logger.warning('Changing the decimation rate to match the output rate!')
+                v['logs']['decimation'] = v['sampling_rate']
             v['logs'] = logs.entries[tag][k]
             self.logger.info('Output logged in!')
         self.outputs[k] = Output(k,**v)
@@ -1375,7 +1424,7 @@ def init(self):
     <<client-server exchange>>
     self.logger.info('%s',reply)
 def update(self,step):
-    if step>=self.delay and step%self.sampling_rate==0:
+    if step>=self.delay and (step-self.delay)%self.sampling_rate==0:
         self.logger.debug('Updating!')
         m = 'Update'
         <<client-server exchange>>
@@ -1386,17 +1435,17 @@ def output(self,step):
                 <<client-server exchange>>
                 self.logger.debug("Reply: %s",reply)
                 for k,v in self.outputs.items():
-                    if step%v.sampling_rate==0:
+                    if (step-self.delay)%v.sampling_rate==0:
                         self.logger.debug('Outputing %s!',k)
                         try:
                             v.data[...] = np.asarray(reply[k]).reshape(v.size)
                         except ValueError:
                             self.logger.warning('Resizing %s!',k)
                             __red = np.asarray(reply[k])
-                            v.size = __red.size
+                            v.size = __red.shape
                             v.data = np.zeros(__red.shape)
                             v.data[...] = __red
-                        if v.logs is not None and step%v.logs.decimation==0:
+                        if v.logs is not None and (step-self.delay)%v.logs.decimation==0:
                             self.logger.debug('LOGGING')
                             v.logs.add(v.data.copy())
 
@@ -1426,45 +1475,99 @@ class Client(Driver):
                  verbose=logging.INFO,**kwargs):
         <<commom server/client driver>>
         self.system = None
-        self.__xout = np.zeros(0)
-        self.__yout = np.zeros(0)
 
     <<Client methods>>
 
     <<Client device parameter loading and formatting>>
 @ %def Client
+In debug mode, the norm of the vector $u$, $y$ and $x$ are logged at each time
+step into a Panda dataframe.
+<<driver imports>>=
+import pandas as pd
+<<client debug mode (init)>>=
+if self.logger.level==10:
+    self.UYX = pd.DataFrame(columns=['|U|','|Y|','|X|'])
+@
+The dataframe is updated at each update call:
+<<driver imports>>=
+from numpy.linalg import norm
+<<client debug mode (update)>>=
+if self.logger.level==10:
+    self.UYX.loc[step] = [norm(u),
+                          norm(self.__yout),
+                          norm(self.__xout)]
+@
+The dynamic behavior of the [[Client]] is capture in the following classes:
 <<Client methods>>=
 def start(self):
     self.logger.debug('Starting!')
-    pass
 def init(self):
     self.logger.debug('Initializing!')
-    self.system = self.system._as_ss()
-    self.__xout = np.zeros((1,self.system.A.shape[0]))
-    self.__yout = np.zeros((1, self.system.C.shape[0]))
+    self.system.init()
 def update(self,step):
-    if step>=self.delay and step%self.sampling_rate==0:
+    if step>=self.delay and (step-self.delay)%self.sampling_rate==0:
         self.logger.debug('Updating!')
         u = np.hstack([_.data.reshape(1,-1) for _  in self.inputs.values()])
+        self.system.update(u)
         self.logger.debug('u: %s',u)
-        self.__yout = np.dot(self.system.C, self.__xout) + np.dot(self.system.D, u)
-        self.__xout = np.dot(self.system.A, self.__xout) + np.dot(self.system.B, u)
 
 def output(self,step):
     if step>=self.delay:
+        a = 0
+        b = 0
         for k,v in self.outputs.items():
-            if step%v.sampling_rate==0:
+            if (step-self.delay)%v.sampling_rate==0:
                 self.logger.debug('Outputing %s!',k)
-                a = 0
-                for k in self.outputs:
-                    b = a + self.outputs[k].data.size
-                    self.outputs[k].data[...] = \
-                                self.__yout[0,a:b].reshape(self.outputs[k].size)
-                    a = b
+                b = a + v.data.size
+                self.logger.debug('%s [%s]: [%d,%d]',k,v.size,a,b)
+                v.data[...] = self.system.output()[0,a:b].reshape(v.size)
+                a = b
+                if v.logs is not None and (step-self.delay)%v.logs.decimation==0:
+                    self.logger.debug('LOGGING')
+                    v.logs.add(v.data.copy())
+
 
 def terminate(self):
     self.logger.debug('Terminating!')
 @
+
+\paragraph{System}
+
+<<driver imports>>=
+from . import control
+@
+<<control.py>>=
+<<control imports>>
+from .mpc_driver import MPC
+import numpy as np
+class System:
+    def __init__(self,**kwargs):
+        if 'transfer function' in kwargs:
+            self.system = signal.dlti(kwargs['transfer function']['num'],
+                                      kwargs['transfer function']['denom'])
+        elif 'zeros poles gain' in kwargs:
+            self.system = signal.dlti(kwargs['transfer function']['zeros'],
+                                      kwargs['transfer function']['poles'],
+                                      kwargs['transfer function']['gain'])
+        else:
+            raise Exception("System should be of the type "+\
+                            "'transfer function' or 'zeros poles gains'")
+        self.__xout = np.zeros(0)
+        self.__yout = np.zeros(0)
+
+    def init(self):
+        self.system = self.system._as_ss()
+        self.__xout = np.zeros((1,self.system.A.shape[0]))
+        self.__yout = np.zeros((1, self.system.C.shape[0]))
+
+    def update(self,u):
+        self.__yout = np.dot(self.system.C, self.__xout) + np.dot(self.system.D, u)
+        self.__xout = np.dot(self.system.A, self.__xout) + np.dot(self.system.B, u)
+
+    def output(self):
+        return self.__yout
+@
+
 \subsubsection{Atmosphere}
 \label{sec:driver.atmosphere}
 
@@ -1495,9 +1598,7 @@ class Atmosphere(Driver):
         reply = self.server._recv_()
         self.logger.info('%s',reply)
 
-    def associate(self,prm_file):
-        with open(prm_file) as f:
-            prm = yaml.load(f)
+    def associate(self,prm):
         self.msg['args'].update(prm)
 @ %def Atmosphere
 
@@ -1507,26 +1608,27 @@ class Atmosphere(Driver):
 Driver output data can be logged in using the [[Logs]] class:
 <<dos.py>>=
 class Entry:
-    def __init__(self,tau,decimation):
+    def __init__(self,tau,decimation,delay):
         self.tau = tau
         self.decimation = decimation
+        self.delay = delay
         self.data = []
     def add(self,value):
         self.data += [value]
     @property
     def timeSeries(self):
-        time   = np.arange(len(self.data))*self.decimation*self.tau
+        time   = (np.arange(len(self.data))*self.decimation+self.delay)*self.tau
         values = np.vstack(self.data) if self.data[0].ndim<2 else np.dstack(self.data)
         return time,values
 class Logs:
     def __init__(self,sampling_time):
         self.sampling_time = sampling_time
         self.entries = {}
-    def add(self,driver,output,decimation):
+    def add(self,driver,output,decimation,delay=0):
         if driver in self.entries:
-            self.entries[driver][output] = Entry(self.sampling_time,decimation)
+            self.entries[driver][output] = Entry(self.sampling_time,decimation,delay)
         else:
-            self.entries[driver] = {output:Entry(self.sampling_time,decimation)}
+            self.entries[driver] = {output:Entry(self.sampling_time,decimation,delay)}
     def __repr__(self):
         if self.entries:
             line = ["The 'logs' has {} entries:".format(self.N_entries)]
@@ -1591,7 +1693,7 @@ It is produced with the [[graphviz]] module.
 from graphviz import Digraph
 @
 <<timing diagram>>=
-def diagram(self):
+def diagram(self,**kwargs):
     def add_item(sample_rate,driver_name,method):
         if not sample_rate in sampling:
             sampling[sample_rate] = {}
@@ -1600,12 +1702,13 @@ def diagram(self):
         else:
             sampling[sample_rate][driver_name] += [method]
     def make_nodes(_s_):
-        ss = str(_s_)
-        c = Digraph(ss)
-        c.attr(rank='same')
-        c.node(ss,time_label(_s_))
-        [c.node(ss+'_'+_,make_label(_,sampling[_s_][_])) for _ in sampling[_s_]]
-        return c
+        if not np.isinf(_s_):
+            ss = str(_s_)
+            c = Digraph(ss)
+            c.attr(rank='same')
+            c.node(ss,time_label(_s_))
+            [c.node(ss+'_'+_,make_label(_,sampling[_s_][_])) for _ in sampling[_s_]]
+            main.subgraph(c)
     def make_label(d,dv):
         label = "<TR><TD><B>{}</B></TD></TR>".format(d)
         for v in dv:
@@ -1628,19 +1731,28 @@ def diagram(self):
 
     sampling = {}
     for dk in self.drivers:
-        d = self.drivers[dk]
-        if d.delay>0:
-            add_item(d.delay,dk,'delay')
-        add_item(d.sampling_rate,dk,'update')
-        for ok in d.outputs:
-            o = d.outputs[ok]
-            add_item(o.sampling_rate,dk,'output')
+        if not dk=='atmosphere':
+            self.logger.debug("Timing:%s",dk)
+            d = self.drivers[dk]
+            if d.delay>0:
+                add_item(d.delay,dk,'delay')
+            if np.isinf(d.sampling_rate):
+                add_item(d.delay,dk,'update')
+            else:
+                add_item(d.sampling_rate,dk,'update')
+            for ok in d.outputs:
+                o = d.outputs[ok]
+                if np.isinf(o.sampling_rate):
+                    add_item(d.delay,dk,ok)
+                else:
+                    add_item(o.sampling_rate,dk,ok)
 
     s = sorted(sampling)
-    [main.subgraph(make_nodes(_)) for _ in s]
+    [make_nodes(_) for _ in s]
 
     for k in range(1,len(s)):
-        main.edge(str(s[k-1]),str(s[k]))
+        if not np.isinf(s[k]):
+            main.edge(str(s[k-1]),str(s[k]))
 
     for s in sampling:
         for d in sampling[s]:
@@ -1649,15 +1761,18 @@ def diagram(self):
                 for ik in self.drivers[d].inputs:
                     data = self.drivers[d].inputs[ik]
                     if data.lien is not None:
-                        main.edge(search_method(data.lien[0],'output'),
+                        main.edge(search_method(data.lien[0],data.lien[1]),
                                   '{0}_{1}:{1}_update'.format(str(s),d))
                 for ok in self.drivers[d].outputs:
                     data = self.drivers[d].outputs[ok]
                     if data.lien is not None:
-                        main.edge('{0}_{1}:{1}_output'.format(str(s),d),
+                        main.edge('{0}_{1}:{1}_{2}'.format(str(s),d,ok),
                                   search_method(data.lien[0],'update'))
 
-    return sampling,main
+    if kwargs:
+        main.render(**kwargs)
+    else:
+        return sampling,main
 @
 
 \subsection{Main}

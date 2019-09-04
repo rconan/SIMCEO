@@ -13,6 +13,7 @@ client:
 	$(TANGLE) -Rsim.py simceo.nw > sim.py
 	$(TANGLE) -Rdos.py simceo.nw > dos/dos.py
 	$(TANGLE) -Rdriver.py simceo.nw > dos/driver.py
+	$(TANGLE) -Rcontrol.py simceo.nw > dos/control.py
 
 doc: simceo.nw simceo.tex
 	make -C doc/ all

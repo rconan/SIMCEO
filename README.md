@@ -61,16 +61,18 @@ drivers:
   device name:
     server: true
     delay: 0 # [sample]
-    sampling rate: 1 # [sample]
+    sampling rate: &update_rate 1 # [sample]
     inputs:
       input name:
         size: 0
         lien: # [device, device output name]
     outputs:
       output name:
-        sampling rate: 1 # [sample]
+        sampling rate: &output_rate *update_rate # [sample]
         size: 0
         lien: # [device, device input name]
+        logs:
+          decimation: *output_rate # [sample]
 ```
 
 ## Atmosphere driver
@@ -105,34 +107,60 @@ filename: phase_screen_meaningfull_name.bin
 The section of a mirror driver is either `M1` or `M2` and the parameters of a mirror are in either `M1.yaml` or `M2.yaml`.
 There are only inputs to the mirrors:
 
- * the 6 rigid body modes of each segment: `TxyzRxyz`
+ * the 3 rigid body translations of each segment: `Txyz`
+ * the 3 rigid body rotations of each segment: `Rxyz`
  * the tip and tilt of each segment: `Rxy`
- * the mirror mode shape coefficients: `mode_coefs`
+ * the piston of each segment: `Tz`
+ * the mirror mode shape coefficients: `modes`
 
 ```yaml
 drivers:
   M1:
     inputs:
-      TxyzRxyz:
-        size: [7,6]
+      Txyz:
+        size: [7,3]
+      Tz:
+        size: [7,1]
+      Rxyz:
+        size: [7,3]
       Rxy:
         size: [7,2]
-      mode_coefs:
+      modes:
         size: [7,n_mode]
   M2:
     inputs:
       TxyzRxyz:
         size: [7,6]
+      Tz:
+        size: [7,1]
       Rxy:
         size: [7,2]
       mode_coefs:
         size: [7,n_mode]
 ```
 Both `M1.yaml` and `M2.yaml` have the same syntax.
+State represents the initial state of M1 and M2 segments: translation `Txyz`, rotation `Rxyz` and modal coefficients `modes`.
 If the degrees of freedom are only the rigid body motions, then the file is:
 ```yaml
 mirror: # M1 or M2
 mirror_args: {}
+state:
+  Txyz:
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+  Rxyz:
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
 ```
 
 if the mirror modes are included, then the file becomes:
@@ -141,6 +169,23 @@ mirror: # M1 or M2
 mirror_args:
   mirror_modes: # zernike ,Karhunen-Loeve or bending modes
   N_MODE: # The number of modes
+state:
+  Txyz:
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+  Rxyz:
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
+    - [0.0e-06,0.0e-06,0.0e-06]
 ```
 
 ## Optical path driver

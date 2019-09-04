@@ -5,50 +5,16 @@ import logging
 logging.basicConfig()
 #import yaml
 
-class Driver:
-    def __init__(self,tau,tag):
-        self.tau = tau
-        self.tag = tag
-    def start(self):
-        pass
-    def init(self):
-        pass
-    def update(self,_):
-        pass
-    def output(self,_):
-        pass
-    def terminate(self):
-        pass
-
-class MPC(Driver):
-    def __init__(self,tau,tag,logs,delay=0,sampling_rate=1,
-                 verbose=logging.INFO,**kwargs):
-        Driver.__init__(self,tau,tag)
-        self.logger = logging.getLogger(tag)
+class MPC:
+    def __init__(self,A,B,Q,R,npred,dumin,dumax,umin,umax,verbose=logging.INFO,**kwargs):
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(verbose)
-        self.delay         = delay
-        self.sampling_rate = sampling_rate
-        '''self.inputs        = {}
-        if 'inputs' in kwargs:
-            for k,v in kwargs['inputs'].items():
-                self.logger.info('New input: %s',k)
-                self.inputs[k] = Input(k,**v)
-        self.outputs       = {}
-        if 'outputs' in kwargs:
-            for k,v in kwargs['outputs'].items():
-                self.logger.info('New output: %s',k)
-                if 'logs' in v:
-                    logs.add(tag,k,v['logs']['decimation'])
-                    v['logs'] = logs.entries[tag][k]
-                    self.logger.info('Output logged in!')
-                self.outputs[k] = Output(k,**v)'''
         self.__u = np.zeros(0)
         self.__xpast = np.zeros(0)
-        
-    def start(self):
-        self.logger.debug('Starting!')    
+        self.xr = np.zeros(0)
+        self.npred = npred
 
-    def init(self,A,B,Q,R,npred,dumin,dumax,umin,umax):
+#    def init(self,A,B,Q,R,npred,dumin,dumax,umin,umax):
         self.logger.debug('Initializing!')
 
         # Plant model dimensions
@@ -115,39 +81,37 @@ class MPC(Driver):
             'Phi':Phi, 'GammaT':Gamma.T, 'Qkron':Qkron.toarray(),
             'c':c,'Dumin':Dumin, 'Dumax':Dumax, 'Umin':Umin, 'Umax':Umax
         }
+
+    def init(self):
         self.__u = np.zeros(self.nu)
         self.__xpast = np.zeros(self.nx)
+        self.xr = np.zeros(self.nx*self.npred)
 
+    def update(self,x):
 
-    def update(self,x,xr,step):
-        if step>=self.delay and step%self.sampling_rate==0:
-            self.logger.debug('Updating!')
+        x = x.ravel()
+        print("SHAPES: x[{0}], x_past[{1}]".format(x.shape,self.__xpast.shape))
+        # State feedback - update MPC internal variables
+        xa = np.concatenate((x-self.__xpast,self.__xpast), axis=0)
+        self.__xpast = x   # Update past state
 
-            # State feedback - update MPC internal variables
-            xa = np.concatenate((x-self.__xpast,self.__xpast), axis=0)
-            self.__xpast = x   # Update past state
-            self.logger.debug('xa: %s',xa)
-            
-            # QP linear term - demands state feedback
-            q = np.dot(np.dot(self.mpc_qpdt['GammaT'],self.mpc_qpdt['Qkron']),
-                    (np.dot(self.mpc_qpdt['Phi'],xa) - xr))
-            # QP input constraints
-            lb = np.concatenate((self.mpc_qpdt['Dumin'],
-                    self.mpc_qpdt['Umin']-self.mpc_qpdt['c'].dot(self.__u)), axis=0)
-            ub = np.concatenate((self.mpc_qpdt['Dumax'],
-                    self.mpc_qpdt['Umax']-self.mpc_qpdt['c'].dot(self.__u)), axis=0)
-            # Update QP variables
-            self.qpp.update(q, lb, ub)    
-            # Solve QP
-            U = self.qpp.solve()
-            # Check solver status
-            if U.info.status != 'solved':
-                self.logger.debug('Infeasible QP problem!!!')
-            self.__u = self.__u + U.x[:self.nu]
-            self.logger.debug('u: %s',self.__u)
+        # QP linear term - demands state feedback
+        q = np.dot(np.dot(self.mpc_qpdt['GammaT'],self.mpc_qpdt['Qkron']),
+                (np.dot(self.mpc_qpdt['Phi'],xa) - self.xr))
+        # QP input constraints
+        lb = np.concatenate((self.mpc_qpdt['Dumin'],
+                self.mpc_qpdt['Umin']-self.mpc_qpdt['c'].dot(self.__u)), axis=0)
+        ub = np.concatenate((self.mpc_qpdt['Dumax'],
+                self.mpc_qpdt['Umax']-self.mpc_qpdt['c'].dot(self.__u)), axis=0)
+        # Update QP variables
+        self.qpp.update(q, lb, ub)    
+        # Solve QP
+        U = self.qpp.solve()
+        # Check solver status
+        if U.info.status != 'solved':
+            self.logger.debug('Infeasible QP problem!!!')
+        self.__u = self.__u + U.x[:self.nu]
+        self.logger.debug('u: %s',self.__u)
 
-    def output(self,outputs=None):
-        return self.__u
-
-    def terminate(self):
-        self.logger.debug('Terminating!')
+    def output(self):
+        return np.atleast_2d(self.__u)
