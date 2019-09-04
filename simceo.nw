@@ -1188,7 +1188,8 @@ from scipy import signal
 import pickle
 <<Client device parameter loading and formatting>>=
 def associate(self,prm):
-    self.system = getattr(control,'System')(**prm['System'])
+    sys = list(prm.keys())[0] 
+    self.system = getattr(control,sys)(**prm[sys])
 @
 Next we check if an atmosphere is define
 @
@@ -1537,6 +1538,7 @@ from . import control
 @
 <<control.py>>=
 <<control imports>>
+from .mpc_driver import MPC
 import numpy as np
 class System:
     def __init__(self,**kwargs):
