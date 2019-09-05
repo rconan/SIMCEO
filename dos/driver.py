@@ -1,11 +1,15 @@
-from scipy import signal
 import numpy as np
-import yaml
+from ruamel.yaml import YAML
+yaml=YAML(typ='safe')
 import logging
+import pandas as pd
+from numpy.linalg import norm
+from . import control
 logging.basicConfig()
 class IO:
     def __init__(self,tag,size=0, lien=None, logs=None):
         self.logger = logging.getLogger(tag)
+        self.logger.setLevel(logging.INFO)
         self.size = size
         self.data = np.zeros(size)
         self.lien = lien
@@ -33,6 +37,8 @@ class Driver:
     def __init__(self,tau,tag):
         self.tau = tau
         self.tag = tag
+        self.delay = 0
+        self.sampling_rate = 1
     def start(self):
         pass
     def init(self):
@@ -60,8 +66,20 @@ class Server(Driver):
         if 'outputs' in kwargs:
             for k,v in kwargs['outputs'].items():
                 self.logger.info('New output: %s',k)
+                if not 'sampling_rate' in v:
+                    v['sampling_rate']=self.sampling_rate
+                if v['sampling_rate']<self.sampling_rate:
+                    if v['sampling_rate']!=1:
+                        self.logger.error('The driver output rate cannot be less than the update rate!')
+                    self.logger.warning('Changing the output rate to match the update rate!')
+                    v['sampling_rate'] = self.sampling_rate
                 if 'logs' in v:
-                    logs.add(tag,k,v['logs']['decimation'])
+                    logs.add(tag,k,v['logs']['decimation'],self.delay)
+                    if v['logs']['decimation']<v['sampling_rate']:
+                        if v['logs']['decimation']!=1:
+                            self.logger.error('The log decimation rate cannot be less than the output rate!')
+                        self.logger.warning('Changing the decimation rate to match the output rate!')
+                        v['logs']['decimation'] = v['sampling_rate']
                     v['logs'] = logs.entries[tag][k]
                     self.logger.info('Output logged in!')
                 self.outputs[k] = Output(k,**v)
@@ -97,7 +115,7 @@ class Server(Driver):
         reply = self.server._recv_()
         self.logger.info('%s',reply)
     def update(self,step):
-        if step>=self.delay and step%self.sampling_rate==0:
+        if step>=self.delay and (step-self.delay)%self.sampling_rate==0:
             self.logger.debug('Updating!')
             m = 'Update'
             self.msg['method_id'] = m
@@ -118,17 +136,17 @@ class Server(Driver):
                     reply = self.server._recv_()
                     self.logger.debug("Reply: %s",reply)
                     for k,v in self.outputs.items():
-                        if step%v.sampling_rate==0:
+                        if (step-self.delay)%v.sampling_rate==0:
                             self.logger.debug('Outputing %s!',k)
                             try:
                                 v.data[...] = np.asarray(reply[k]).reshape(v.size)
                             except ValueError:
                                 self.logger.warning('Resizing %s!',k)
                                 __red = np.asarray(reply[k])
-                                v.size = __red.size
+                                v.size = __red.shape
                                 v.data = np.zeros(__red.shape)
                                 v.data[...] = __red
-                            if v.logs is not None and step%v.logs.decimation==0:
+                            if v.logs is not None and (step-self.delay)%v.logs.decimation==0:
                                 self.logger.debug('LOGGING')
                                 v.logs.add(v.data.copy())
 
@@ -143,17 +161,18 @@ class Server(Driver):
         reply = self.server._recv_()
         self.logger.info(reply)
 
-    def associate(self,prm_file):
+    def associate(self,prm):
         base_units = np.pi/180
         units = {'degree': base_units,
                  'arcmin': base_units/60,
                  'arcsec': base_units/60/60,
                  'mas': base_units/60/60/1e3}
-        with open(prm_file) as f:
-            prm = yaml.load(f)
         if 'mirror' in prm:
             self.msg['class_id'] = 'GMT'
             self.msg_args['Start'].update(prm)
+            if 'state' in prm:
+                self.msg_args['Init']['state'] = {prm['mirror']:{k:np.array(v) for k,v in prm['state'].items()}}
+                self.msg_args['Start'].pop('state')
             self.msg_args['Update']['mirror'] = prm['mirror']
             self.msg_args['Update']['inputs'].update(\
                     {k_i:v_i.data for k_i,v_i in self.inputs.items()})
@@ -172,14 +191,18 @@ class Server(Driver):
                                            'calibration_source_args':None,
                                            'calibrate_args':None})
 
-            if 'source_attributes' in prm['source']:
-                if 'rays' in prm['source']['source_attributes'] and \
-                   'rot_angle' in  prm['source']['source_attributes']['rays'] and \
-                   isinstance(prm['source']['source_attributes']['rays']['rot_angle'],dict):
-                    prm['source']['source_attributes']['rays']['rot_angle'] = \
-                      np.asarray(prm['source']['source_attributes']['rays']['rot_angle']['value'])*\
-                       units[prm['source']['source_attributes']['rays']['rot_angle']['units']]
-                    self.msg_args['Start'].update({'source_attributes':prm['source']['source_attributes']})
+            if 'source_attributes' in prm:
+                src_attr = prm['source_attributes'] 
+                src_attr.append({'timeStamp':self.delay*self.tau})
+                if 'rays' in src_attr and \
+                   'rot_angle' in  src_attr['rays'] and \
+                   isinstance(src_attr['rays']['rot_angle'],dict):
+                    src_attr['rays']['rot_angle'] = \
+                      np.asarray(src_attr['rays']['rot_angle']['value'])*\
+                       units[src_attr['rays']['rot_angle']['units']]
+            else:
+                src_attr = {'timeStamp':self.delay*self.tau}
+            self.msg_args['Start'].update({'source_attributes':src_attr})
 
             if prm['sensor']['class'] is not None:
                 self.msg_args['Start']['sensor_args'].update(prm['sensor']['args'])
@@ -204,61 +227,59 @@ class Client(Driver):
         if 'outputs' in kwargs:
             for k,v in kwargs['outputs'].items():
                 self.logger.info('New output: %s',k)
+                if not 'sampling_rate' in v:
+                    v['sampling_rate']=self.sampling_rate
+                if v['sampling_rate']<self.sampling_rate:
+                    if v['sampling_rate']!=1:
+                        self.logger.error('The driver output rate cannot be less than the update rate!')
+                    self.logger.warning('Changing the output rate to match the update rate!')
+                    v['sampling_rate'] = self.sampling_rate
                 if 'logs' in v:
-                    logs.add(tag,k,v['logs']['decimation'])
+                    logs.add(tag,k,v['logs']['decimation'],self.delay)
+                    if v['logs']['decimation']<v['sampling_rate']:
+                        if v['logs']['decimation']!=1:
+                            self.logger.error('The log decimation rate cannot be less than the output rate!')
+                        self.logger.warning('Changing the decimation rate to match the output rate!')
+                        v['logs']['decimation'] = v['sampling_rate']
                     v['logs'] = logs.entries[tag][k]
                     self.logger.info('Output logged in!')
                 self.outputs[k] = Output(k,**v)
         self.system = None
-        self.__xout = np.zeros(0)
-        self.__yout = np.zeros(0)
 
     def start(self):
         self.logger.debug('Starting!')
-        pass
     def init(self):
         self.logger.debug('Initializing!')
-        self.system = self.system._as_ss()
-        self.__xout = np.zeros((1,self.system.A.shape[0]))
-        self.__yout = np.zeros((1, self.system.C.shape[0]))
+        self.system.init()
     def update(self,step):
-        if step>=self.delay and step%self.sampling_rate==0:
+        if step>=self.delay and (step-self.delay)%self.sampling_rate==0:
             self.logger.debug('Updating!')
             u = np.hstack([_.data.reshape(1,-1) for _  in self.inputs.values()])
+            self.system.update(u)
             self.logger.debug('u: %s',u)
-            self.__yout = np.dot(self.system.C, self.__xout) + np.dot(self.system.D, u)
-            self.__xout = np.dot(self.system.A, self.__xout) + np.dot(self.system.B, u)
 
     def output(self,step):
         if step>=self.delay:
+            a = 0
+            b = 0
             for k,v in self.outputs.items():
-                if step%v.sampling_rate==0:
+                if (step-self.delay)%v.sampling_rate==0:
                     self.logger.debug('Outputing %s!',k)
-                    a = 0
-                    for k in self.outputs:
-                        b = a + self.outputs[k].data.size
-                        self.outputs[k].data[...] = \
-                                    self.__yout[0,a:b].reshape(self.outputs[k].size)
-                        a = b
+                    b = a + v.data.size
+                    self.logger.debug('%s [%s]: [%d,%d]',k,v.size,a,b)
+                    v.data[...] = self.system.output()[0,a:b].reshape(v.size)
+                    a = b
+                    if v.logs is not None and (step-self.delay)%v.logs.decimation==0:
+                        self.logger.debug('LOGGING')
+                        v.logs.add(v.data.copy())
+
 
     def terminate(self):
         self.logger.debug('Terminating!')
 
-    def associate(self,prm_file):
-        with open(prm_file) as f:
-            prm = yaml.load(f)
-        if 'transfer function' in prm['system']:
-            system = prm['system']
-            self.system = signal.dlti(system['transfer function']['num'],
-                                      system['transfer function']['denom'])
-        elif 'zeros poles gain' in prm['system']:
-            system = prm['system']
-            self.system = signal.dlti(system['transfer function']['zeros'],
-                                      system['transfer function']['poles'],
-                                      system['transfer function']['gain'])
-        else:
-            raise Exception("System should be of the type "+\
-                            "'transfer function' or 'zeros poles gains'")
+    def associate(self,prm):
+        sys = list(prm.keys())[0] 
+        self.system = getattr(control,sys)(**prm[sys])
 class Atmosphere(Driver):
     def __init__(self,tau,tag,server,verbose=logging.INFO,**kwargs):
         Driver.__init__(self,tau,tag)
@@ -282,7 +303,5 @@ class Atmosphere(Driver):
         reply = self.server._recv_()
         self.logger.info('%s',reply)
 
-    def associate(self,prm_file):
-        with open(prm_file) as f:
-            prm = yaml.load(f)
+    def associate(self,prm):
         self.msg['args'].update(prm)

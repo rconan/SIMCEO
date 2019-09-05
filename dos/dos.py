@@ -1,9 +1,10 @@
 import os
 import time
-import yaml
 import logging
 import threading
 import numpy as np
+from ruamel.yaml import YAML
+yaml=YAML(typ='safe')
 from . import driver
 import zmq
 import pickle
@@ -25,7 +26,8 @@ class Timer(object):
         print('Elapsed time: %s' % (time.time() - self.tstart))
 
 class DOS(threading.Thread):
-    def __init__(self,path_to_config_dir,verbose=logging.INFO):
+    def __init__(self,path_to_config_dir,verbose=logging.INFO,
+                 show_timing=0):
 
         threading.Thread.__init__(self)
 
@@ -37,7 +39,9 @@ class DOS(threading.Thread):
         with open(cfg_file) as f:
             self.cfg = yaml.load(f)
 
-        self.agent = broker(self.cfg['simulation']['server']['IP'])
+        self.agent = None
+        if show_timing in [0,2]:
+            self.agent = broker(self.cfg['simulation']['server']['IP'])
 
         self.N_SAMPLE = int(self.cfg['simulation']['sampling frequency']*
                             self.cfg['simulation']['duration'])
@@ -48,8 +52,8 @@ class DOS(threading.Thread):
         self.logs = Logs(tau)
         self.drivers = {}
         for d,v in self.cfg['drivers'].items():
-            prm_file = os.path.join(path_to_config_dir,d+'.yaml')
-            if os.path.isfile(prm_file):
+            prm_file = os.path.join(path_to_config_dir,d)
+            if os.path.isfile(prm_file+'.yaml') or os.path.isfile(prm_file+'.pickle'):
                 self.logger.info('New driver: %s',d)
                 if 'server' in v and v['server'] is False:
                     self.drivers[d] = driver.Client(tau,d,
@@ -73,8 +77,14 @@ class DOS(threading.Thread):
                 d.outputs[k_o].tie(self.drivers)
         for k_d in self.drivers:
             d = self.drivers[k_d]
-            device = os.path.join(path_to_config_dir,k_d+'.yaml')
-            d.associate(device)
+            device = os.path.join(path_to_config_dir,k_d)
+            try:
+                with open(device+'.yaml') as f:
+                    prm = yaml.load(f)
+            except:
+                with open(device+'.pickle','rb') as f:
+                    prm = pickle.load(f)
+            d.associate(prm)
         self.__start = map(lambda x: x.start(), self.drivers.values())
         self.__init = map(lambda x: x.init(), self.drivers.values())
         self.step = self.stepping()
@@ -83,6 +93,9 @@ class DOS(threading.Thread):
             self.cfg['simulation']['duration'],
             self.cfg['simulation']['sampling frequency'],
             self.N_SAMPLE))
+
+        if show_timing>0:
+            self.diagram(filename=path_to_config_dir.replace('/','_'),format='png')
 
     def push(self):
         self.logger.info('Pushing configuration to server')
@@ -125,7 +138,7 @@ class DOS(threading.Thread):
         self.logger.info('Terminating')
         list(self.__terminate)
 
-    def diagram(self):
+    def diagram(self,**kwargs):
         def add_item(sample_rate,driver_name,method):
             if not sample_rate in sampling:
                 sampling[sample_rate] = {}
@@ -134,12 +147,13 @@ class DOS(threading.Thread):
             else:
                 sampling[sample_rate][driver_name] += [method]
         def make_nodes(_s_):
-            ss = str(_s_)
-            c = Digraph(ss)
-            c.attr(rank='same')
-            c.node(ss,time_label(_s_))
-            [c.node(ss+'_'+_,make_label(_,sampling[_s_][_])) for _ in sampling[_s_]]
-            return c
+            if not np.isinf(_s_):
+                ss = str(_s_)
+                c = Digraph(ss)
+                c.attr(rank='same')
+                c.node(ss,time_label(_s_))
+                [c.node(ss+'_'+_,make_label(_,sampling[_s_][_])) for _ in sampling[_s_]]
+                main.subgraph(c)
         def make_label(d,dv):
             label = "<TR><TD><B>{}</B></TD></TR>".format(d)
             for v in dv:
@@ -162,19 +176,28 @@ class DOS(threading.Thread):
 
         sampling = {}
         for dk in self.drivers:
-            d = self.drivers[dk]
-            if d.delay>0:
-                add_item(d.delay,dk,'delay')
-            add_item(d.sampling_rate,dk,'update')
-            for ok in d.outputs:
-                o = d.outputs[ok]
-                add_item(o.sampling_rate,dk,'output')
+            if not dk=='atmosphere':
+                self.logger.debug("Timing:%s",dk)
+                d = self.drivers[dk]
+                if d.delay>0:
+                    add_item(d.delay,dk,'delay')
+                if np.isinf(d.sampling_rate):
+                    add_item(d.delay,dk,'update')
+                else:
+                    add_item(d.sampling_rate,dk,'update')
+                for ok in d.outputs:
+                    o = d.outputs[ok]
+                    if np.isinf(o.sampling_rate):
+                        add_item(d.delay,dk,ok)
+                    else:
+                        add_item(o.sampling_rate,dk,ok)
 
         s = sorted(sampling)
-        [main.subgraph(make_nodes(_)) for _ in s]
+        [make_nodes(_) for _ in s]
 
         for k in range(1,len(s)):
-            main.edge(str(s[k-1]),str(s[k]))
+            if not np.isinf(s[k]):
+                main.edge(str(s[k-1]),str(s[k]))
 
         for s in sampling:
             for d in sampling[s]:
@@ -183,40 +206,44 @@ class DOS(threading.Thread):
                     for ik in self.drivers[d].inputs:
                         data = self.drivers[d].inputs[ik]
                         if data.lien is not None:
-                            main.edge(search_method(data.lien[0],'output'),
+                            main.edge(search_method(data.lien[0],data.lien[1]),
                                       '{0}_{1}:{1}_update'.format(str(s),d))
                     for ok in self.drivers[d].outputs:
                         data = self.drivers[d].outputs[ok]
                         if data.lien is not None:
-                            main.edge('{0}_{1}:{1}_output'.format(str(s),d),
+                            main.edge('{0}_{1}:{1}_{2}'.format(str(s),d,ok),
                                       search_method(data.lien[0],'update'))
 
-        return sampling,main
+        if kwargs:
+            main.render(**kwargs)
+        else:
+            return sampling,main
 
     @property
     def pctComplete(self):
         return round(100*self.__k_step/(self.N_SAMPLE-1))
 class Entry:
-    def __init__(self,tau,decimation):
+    def __init__(self,tau,decimation,delay):
         self.tau = tau
         self.decimation = decimation
+        self.delay = delay
         self.data = []
     def add(self,value):
         self.data += [value]
     @property
     def timeSeries(self):
-        time   = np.arange(len(self.data))*self.decimation*self.tau
+        time   = (np.arange(len(self.data))*self.decimation+self.delay)*self.tau
         values = np.vstack(self.data) if self.data[0].ndim<2 else np.dstack(self.data)
         return time,values
 class Logs:
     def __init__(self,sampling_time):
         self.sampling_time = sampling_time
         self.entries = {}
-    def add(self,driver,output,decimation):
+    def add(self,driver,output,decimation,delay=0):
         if driver in self.entries:
-            self.entries[driver][output] = Entry(self.sampling_time,decimation)
+            self.entries[driver][output] = Entry(self.sampling_time,decimation,delay)
         else:
-            self.entries[driver] = {output:Entry(self.sampling_time,decimation)}
+            self.entries[driver] = {output:Entry(self.sampling_time,decimation,delay)}
     def __repr__(self):
         if self.entries:
             line = ["The 'logs' has {} entries:".format(self.N_entries)]

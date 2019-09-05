@@ -12,6 +12,7 @@ import scipy.linalg as LA
 import pickle
 import zlib
 import logging
+import copy
 
 logging.basicConfig()
 
@@ -144,6 +145,7 @@ class SGMT(Sfunction):
         self.logger.setLevel(verbose)
         self.logger.info('Instantiate')
         self.gmt  = ceo.GMT_MX()
+        self.state0 = copy.deepcopy(self.gmt.state)
 
     def Terminate(self, args=None):
         self.logger.info('Terminate')
@@ -155,21 +157,37 @@ class SGMT(Sfunction):
             self.gmt[mirror] = getattr(ceo,"GMT_"+mirror)( **mirror_args )
         return "GMT"
     def Update(self, mirror=None, inputs=None):
-        for key in inputs:
-            data = np.array( inputs[key], order='C', dtype=np.float64 )
+        state = copy.deepcopy(self.state0)
+        for dof in inputs:
+            if dof=='Rxy':
+                data = np.zeros((7,3))
+                data[:,:2] = np.asarray( inputs[dof], order='C', dtype=np.float64 )
+                dof = 'Rxyz'
+            elif dof=='Tz':
+                data = np.zeros((7,3))
+                data[:,2] = np.asarray( inputs[dof], order='C', dtype=np.float64 )
+                dof = 'Txyz'
+            else:
+                data = np.asarray( inputs[dof], order='C', dtype=np.float64 )
             #data = np.transpose( np.reshape( data , (-1,7) ) )
+            state[mirror][dof][:] += data
+            """
             if key=="TxyzRxyz":
-                self.gmt[mirror].motion_CS.origin[:]       = data[:,:3]
-                self.gmt[mirror].motion_CS.euler_angles[:] = data[:,3:]
-                self.gmt[mirror].motion_CS.update()
+                state[mirror]['Txyz'][:] += data[:,:3].copy()
+                state[mirror]['Rxyz'][:] += data[:,3:].copy()
             elif key=="Rxy":
-                self.gmt[mirror].motion_CS.euler_angles[:,:2] = data
-                self.gmt[mirror].motion_CS.update()
+                state[mirror]['Rxyz'][:,:2] += data.copy()
+            elif key=="Tz":
+                state[mirror]['Txyz'][:,2] += data.ravel().copy()
             elif key=="mode_coefs":
-                    self.gmt[mirror].modes.a[:] = data
-                    self.gmt[mirror].modes.update()
-    def Init(self, args=None):
-        pass
+                state[mirror]['modes'][:] += data.copy()
+            """
+        self.logger.debug('GMT STATE: %s',state)
+        self.gmt^=state
+    def Init(self, state={}):
+        for mirror in state:
+            self.state0[mirror].update(state[mirror])
+            self.logger.info("GMT state set to %s",self.state0)
     def Outputs(self, args=None):
         pass
 class _Atmosphere_():
@@ -228,9 +246,9 @@ class SOpticalPath(Sfunction):
             attr = source_attributes[key]
             if isinstance(attr,dict):
                 for kkey in attr:
-                    setattr(getattr(src,key),kkey,atrr[kkey])
+                    setattr(getattr(self.src,key),kkey,attr[kkey])
             else:
-                setattr(src,key,attr)
+                setattr(self.src,key,attr)
         self.src.reset()
         self.gmt.reset()
         self.gmt.propagate(self.src)
@@ -345,11 +363,18 @@ class SOpticalPath(Sfunction):
                     self.gmt.reset()
                     self.src.reset()
                     self.sensor.reset()
-                    D = getattr( self.gmt, calibs["method_id"] )( \
+                    if calibs["method_id"]=="AGWS_calibrate":
+                        C = getattr( self.gmt, calibs["method_id"] )( \
+                                        self.sensor, 
+                                        self.src,
+                                        **calibs["args"],
+                                        calibrationVaultKwargs=pseudo_inverse)
+                    else:
+                        D = getattr( self.gmt, calibs["method_id"] )( \
                                         self.sensor, 
                                         self.src,
                                         **calibs["args"])
-                    C = ceo.CalibrationVault([D],**pseudo_inverse)
+                        C = ceo.CalibrationVault([D],**pseudo_inverse)
                     self.gmt.reset()
                     self.src.reset()
                     self.sensor.reset()
