@@ -1790,7 +1790,31 @@ if __name__=="__main__":
     sim._run_()
 @
 
+\section{SIMCEO Service}
+\label{sec:service}
 
+\subsection{Script}
+\label{sec:service.script}
+
+<<simceo>>=
+#!/bin/sh
+echo "STARTING SIMCEO SERVICE"
+/usr/bin/env LD_LIBRARY_PATH=/usr/local/cuda/lib64 PYTHONPATH=/home/ubuntu/CEO/python/ /home/ubuntu/anaconda3/bin/python /home/ubuntu/SIMCEO/simceo.py
+@ 
+
+\subsection{Service}
+\label{sec:service.service}
+
+<<simceo.service>>=
+[Unit]
+Description=SIMCEO SERVER
+
+[Service]
+ExecStart=/bin/su ubuntu -c "/home/ubuntu/bin/simceo"
+
+[Install]
+WantedBy=multi-user.target
+@
 
 \section{Index} 
 \nowebindex
