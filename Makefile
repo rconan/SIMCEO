@@ -14,6 +14,11 @@ client:
 	$(TANGLE) -Rdos.py simceo.nw > dos/dos.py
 	$(TANGLE) -Rdriver.py simceo.nw > dos/driver.py
 	$(TANGLE) -Rcontrol.py simceo.nw > dos/control.py
+service:
+	$(TANGLE) -Rsimceo simceo.nw > simceo
+	echo "The simceo script resides in your home ~/bin directory"
+	$(TANGLE) -Rsimceo.service simceo.nw > simceo.service
+	echo "The simceo script resides in /etc/systemd/system"
 
 doc: simceo.nw simceo.tex
 	make -C doc/ all
