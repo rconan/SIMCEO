@@ -940,7 +940,7 @@ A [[dos]] simulation is defined with a parameter file [[dos.yaml]].
 <<dos drivers section>>
 <<init.py>>=
 from .dos import DOS
-from . import driver
+#from driver import Server, Client, Atmosphere
 @
 \subsection{Simulation}
 \label{sec:simulation}
@@ -967,7 +967,7 @@ import threading
 import numpy as np
 from ruamel.yaml import YAML
 yaml=YAML(typ='safe')
-from . import driver
+from driver import Server, Client, Atmosphere
 <<dos.py>>=
 <<dos imports>>
 
@@ -1050,14 +1050,14 @@ for d,v in self.cfg['drivers'].items():
     if os.path.isfile(prm_file+'.yaml') or os.path.isfile(prm_file+'.pickle'):
         self.logger.info('New driver: %s',d)
         if 'server' in v and v['server'] is False:
-            self.drivers[d] = driver.Client(tau,d,
+            self.drivers[d] = Client(tau,d,
                                             self.logs,
                                             verbose=verbose,**v)
         elif d=='atmosphere':
-            self.drivers[d] = driver.Atmosphere(tau,d,self.agent,
+            self.drivers[d] = Atmosphere(tau,d,self.agent,
                                                 verbose=verbose)
         else:
-            self.drivers[d] = driver.Server(tau,d,
+            self.drivers[d] = Server(tau,d,
                                             self.logs,
                                             self.agent,
                                             verbose=verbose,**v)
@@ -1144,7 +1144,9 @@ def associate(self,prm):
         self.msg['class_id'] = 'GMT'
         self.msg_args['Start'].update(prm)
         if 'state' in prm:
-            self.msg_args['Init']['state'] = {prm['mirror']:{k:np.array(v) for k,v in prm['state'].items()}}
+            self.msg_args['Init']['state'] = {prm['mirror']:
+                                              {k:np.asarray(v,dtype=np.double) \
+                                               for k,v in prm['state'].items()}}
             self.msg_args['Start'].pop('state')
         self.msg_args['Update']['mirror'] = prm['mirror']
         self.msg_args['Update']['inputs'].update(\
@@ -1152,10 +1154,12 @@ def associate(self,prm):
     else:
         self.msg['class_id'] = 'OP'
         if isinstance(prm['source']['zenith'],dict):
-            prm['source']['zenith'] = np.asarray(prm['source']['zenith']['value'])*\
+            prm['source']['zenith'] = np.asarray(prm['source']['zenith']['value'],
+                                                 dtype=np.double)*\
                                       units[prm['source']['zenith']['units']]
         if isinstance(prm['source']['azimuth'],dict):
-            prm['source']['azimuth'] = np.asarray(prm['source']['azimuth']['value'])*\
+            prm['source']['azimuth'] = np.asarray(prm['source']['azimuth']['value'],
+                                                  dtype=np.double)*\
                                       units[prm['source']['azimuth']['units']]
         prm['source'].update({'samplingTime':self.tau*self.sampling_rate})
         self.msg_args['Start'].update({'source_args':prm['source'],
@@ -1534,11 +1538,11 @@ def terminate(self):
 \paragraph{System}
 
 <<driver imports>>=
-from . import control
+import control
 @
 <<control.py>>=
 <<control imports>>
-from .mpc_driver import MPC
+from mpc_driver import MPC
 import numpy as np
 class System:
     def __init__(self,**kwargs):
@@ -1778,16 +1782,25 @@ def diagram(self,**kwargs):
 \subsection{Main}
 \label{sec:dos.main}
 
-<<sim.py>>=
-
+<<dos imports>>=
 import sys
-import dos
+@
+<<dos.py>>=
 
 if __name__=="__main__":
 
-    dospath = sys.argv[1]
-    sim = dos.DOS(dospath)
+    import matplotlib.pyplot as plt
+
+    #dospath = sys.argv[1]
+    dospath = 'dos/M2TT'
+    sim = DOS(dospath,verbose=logging.INFO,show_timing=2)
     sim._run_()
+    fig,ax = plt.subplots()
+    ax.plot(*sim.logs.entries['science']['segment_tiptilt'].timeSeries,'.-')
+    ax.grid()
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Seg. TT. [arcsec]')
+    plt.show()
 @
 
 \section{SIMCEO Service}

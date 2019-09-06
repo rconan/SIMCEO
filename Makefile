@@ -10,7 +10,6 @@ client:
 	mkdir -p dos
 	$(TANGLE) -Rdos.yaml simceo.nw > etc/dos.yaml
 	$(TANGLE) -Rinit.py simceo.nw > dos/__init__.py
-	$(TANGLE) -Rsim.py simceo.nw > sim.py
 	$(TANGLE) -Rdos.py simceo.nw > dos/dos.py
 	$(TANGLE) -Rdriver.py simceo.nw > dos/driver.py
 	$(TANGLE) -Rcontrol.py simceo.nw > dos/control.py
