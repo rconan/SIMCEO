@@ -85,7 +85,7 @@ class MPC:
         }
 
     def init(self):
-        self.__u = np.zeros(self.nu)
+        self.__u = 0*np.ones(self.nu) #np.zeros(self.nu)
         self.__xpast = np.zeros(self.nx)
 
     def update(self,x):
