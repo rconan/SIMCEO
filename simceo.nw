@@ -41,7 +41,7 @@
 % \subsection{UBJSON}
 % \label{sec:ubjson}
 
-% Universal Binary JSON (UBJSON\footnote{\url{http://ubjson.org/}}) is the message format used to exchanumpynge data between SIMCEO client and server.
+% Universal Binary JSON (UBJSON\footnote{\url{http://ubjson.org/}}) is the message format used toTapio.Helin@lut.fi exchanumpynge data between SIMCEO client and server.
 % The Matlab UBJSON encoder and decoder is JSONLAB.
 % SIMCEO comes with its own version of JSONLAB that fixes a few bugs.
 % To add JSONLAB to the Matlab search path, move Matlab current folder to SIMCEO folder and at the Matlab prompt enter:
@@ -96,6 +96,7 @@ import pickle
 import zlib
 import logging
 import copy
+from IM.Telescope import FEM
 
 logging.basicConfig()
 
@@ -275,6 +276,10 @@ def __getitem__(self,key):
             return self.ops[-1]
     elif key=='testComm':
         return testComm()
+    elif key=="FEM":
+        if not hasattr(self,'fem'):
+            self.fem = FEM()
+        return self.fem
     else:
         raise KeyError("Available keys are: GMT, ATM or OP")
 @ 
@@ -939,8 +944,10 @@ A [[dos]] simulation is defined with a parameter file [[dos.yaml]].
 <<dos simulation section>>
 <<dos drivers section>>
 <<init.py>>=
+from . import mpc_driver
+from . import control
+from . import driver
 from .dos import DOS
-#from driver import Server, Client, Atmosphere
 @
 \subsection{Simulation}
 \label{sec:simulation}
@@ -967,7 +974,7 @@ import threading
 import numpy as np
 from ruamel.yaml import YAML
 yaml=YAML(typ='safe')
-from driver import Server, Client, Atmosphere
+from .driver import Server, Client, Atmosphere
 <<dos.py>>=
 <<dos imports>>
 
@@ -1151,7 +1158,12 @@ def associate(self,prm):
         self.msg_args['Update']['mirror'] = prm['mirror']
         self.msg_args['Update']['inputs'].update(\
                 {k_i:v_i.data for k_i,v_i in self.inputs.items()})
-    else:
+    elif 'FEM' in prm:
+        self.msg['class_id'] = 'FEM'
+        self.msg_args['Start'].update(prm['FEM']['build'])
+        self.msg_args['Init'].update({'dt':self.tau})
+        self.msg_args['Init'].update(prm['FEM']['reduction'])
+    elif 'source' in prm:
         self.msg['class_id'] = 'OP'
         if isinstance(prm['source']['zenith'],dict):
             prm['source']['zenith'] = np.asarray(prm['source']['zenith']['value'],
@@ -1538,11 +1550,11 @@ def terminate(self):
 \paragraph{System}
 
 <<driver imports>>=
-import control
+from . import control
 @
 <<control.py>>=
 <<control imports>>
-from mpc_driver import MPC
+from .mpc_driver import MPC
 import numpy as np
 class System:
     def __init__(self,**kwargs):

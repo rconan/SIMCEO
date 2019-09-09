@@ -48,4 +48,4 @@ COMMENTS:
     pseudo_inverse:
       n_threshold: [1]
       insert_zeros: [[41,82]]
-#      filename: AGWS_coupled_rotfilt
+      filename: AGWS_coupled_rotfilt
