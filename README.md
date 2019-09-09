@@ -129,13 +129,15 @@ drivers:
         size: [7,n_mode]
   M2:
     inputs:
-      TxyzRxyz:
-        size: [7,6]
+      Txyz:
+        size: [7,3]
       Tz:
         size: [7,1]
+      Rxyz:
+        size: [7,3]
       Rxy:
         size: [7,2]
-      mode_coefs:
+      modes:
         size: [7,n_mode]
 ```
 Both `M1.yaml` and `M2.yaml` have the same syntax.
