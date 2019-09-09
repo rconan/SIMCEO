@@ -376,6 +376,7 @@ The message that triggers the call to the \emph{Start} method is
         self.logger.info('Start')
         if mirror_args:
             self.gmt[mirror] = getattr(ceo,"GMT_"+mirror)( **mirror_args )
+            self.state0 = copy.deepcopy(self.gmt.state)
         return "GMT"
 @
 
