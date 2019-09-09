@@ -5,7 +5,7 @@ simulation:
     IP: 127.0.0.1
 #    IP: 34.213.27.234
 drivers:
-#  atmosphere: {}
+  atmosphere: {}
   M2:
     sampling_rate: 1 # [sample]
     inputs:

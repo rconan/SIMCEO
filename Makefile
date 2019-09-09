@@ -10,9 +10,14 @@ client:
 	mkdir -p dos
 	$(TANGLE) -Rdos.yaml simceo.nw > etc/dos.yaml
 	$(TANGLE) -Rinit.py simceo.nw > dos/__init__.py
-	$(TANGLE) -Rsim.py simceo.nw > sim.py
 	$(TANGLE) -Rdos.py simceo.nw > dos/dos.py
 	$(TANGLE) -Rdriver.py simceo.nw > dos/driver.py
+	$(TANGLE) -Rcontrol.py simceo.nw > dos/control.py
+service:
+	$(TANGLE) -Rsimceo simceo.nw > simceo
+	echo "The simceo script resides in your home ~/bin directory"
+	$(TANGLE) -Rsimceo.service simceo.nw > simceo.service
+	echo "The simceo script resides in /etc/systemd/system"
 
 doc: simceo.nw simceo.tex
 	make -C doc/ all
