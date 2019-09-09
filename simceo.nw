@@ -1186,8 +1186,9 @@ def associate(self,prm):
                                        'calibrate_args':None})
 
         if 'source_attributes' in prm:
-            src_attr = prm['source_attributes'] 
-            src_attr.append({'timeStamp':self.delay*self.tau})
+            src_attr = prm['source_attributes']
+            print(src_attr)
+            src_attr.update({'timeStamp':self.delay*self.tau})
             if 'rays' in src_attr and \
                'rot_angle' in  src_attr['rays'] and \
                isinstance(src_attr['rays']['rot_angle'],dict):
