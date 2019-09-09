@@ -96,9 +96,14 @@ import pickle
 import zlib
 import logging
 import copy
-from IM.Telescope import FEM
 
 logging.basicConfig()
+
+try:
+    from IM.Telescope import FEM
+except:
+    logging.warning('IM package not found!')
+
 
 SIMCEOPATH = os.path.abspath(os.path.dirname(__file__))
 
