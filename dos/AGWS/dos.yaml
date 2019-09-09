@@ -1,9 +1,9 @@
 simulation:
   sampling frequency: 1 # [Hertz]
-  duration: 20 # [seconds]
+  duration: 200 # [seconds]
   server:
-    IP: 127.0.0.1
-#    IP: 34.213.27.234
+    IP: 34.220.132.129 #18.237.89.108
+#    IP: 127.0.0.1
 drivers:
 #  M1:
 #    sampling_rate: 1 # [sample]
@@ -26,7 +26,7 @@ drivers:
         size: 42
         logs:
           decimation: 1
-  MPC:
+  AGWS_ctrlr:
     server: false
     sampling_rate: 1 # [sample]
     inputs:
@@ -69,3 +69,4 @@ COMMENTS:
       M2TT:
         sampling_rate: 10 # [sample]
         size: 14
+
