@@ -5,9 +5,12 @@ import numpy as np
 import ceo
 import matplotlib.pyplot as plt
 
-with open(os.path.join(os.path.dirname(__file__), 'MirrorLabMaps.yaml'),'r') as f:
-    maps = yaml.load(f)
-print(maps)
+maps = None
+def list():
+    global maps
+    with open(os.path.join(os.path.dirname(__file__), 'MirrorLabMaps.yaml'),'r') as f:
+        maps = yaml.load(f)
+    print(maps)
 
 datapath = '/home/rconan/Documents/GMT/Notes/M1/M1_polishing_error/Data/2019.06'
 
