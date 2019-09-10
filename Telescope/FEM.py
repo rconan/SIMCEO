@@ -1,7 +1,10 @@
 import numpy as np
 from scipy import sparse
 from scipy.linalg import solve_lyapunov
+from scipy.sparse import linalg as slinalg
+import scipy.io as spio
 import h5py
+import logging
 
 def readStateSpace(filename=None,ABC=None):
     if filename is not None:
@@ -24,6 +27,14 @@ def readStateSpace(filename=None,ABC=None):
     print(' * C shape:',C.shape)
     return (A,B,C,None)
 
+def loadFEM2ndOrder(filename):
+    print('LOADING {}'.format(filename))
+    data = spio.loadmat(filename)
+    fem_inputs=[(x[0][0],y[0]) for x,y in zip(data['FEM_IO']['inputs_name'][0,0],data['FEM_IO']['inputs_size'][0][0])]
+    fem_outputs=[(x[0][0],y[0]) for x,y in zip(data['FEM_IO']['outputs_name'][0,0],data['FEM_IO']['outputs_size'][0][0])]
+    var = ['eigenfrequencies','proportionalDampingVec','Phim','Phi']
+    return tuple(data[x] for x in var),fem_inputs,fem_outputs
+
 def ss2fem(*args):
     A,B,C = args[:3]
     h = int(A.shape[0]/2)
@@ -31,12 +42,6 @@ def ss2fem(*args):
     Z= -0.5*A[h:,h:].diagonal()/O
     Phi = C[:,:-h]
     Phim = B[h:,:].T
-    print('FEM synopsis:')
-    print(' * # of modes: {}'.format(O.size))
-    print(' * eigen frequencies range: [{0:.3f},{1:.3f}]Hz'.format(O[0]/2/np.pi,O[-1]/2/np.pi))
-    print(' * damping ratio min-max: [{0:.1f},{1:.1f}]%'.format(Z.min()*1e2,Z.max()*1e2))
-    print(' * $\Phi_m$ shape:',Phim.shape)
-    print(' * $\Phi$ shape:',Phi.shape)
     return O,Z,Phim.toarray(),Phi.toarray()
 
 def freqrep(nu,Phi,Phim,O,Z,n_mode_max=None):
@@ -52,30 +57,121 @@ def freqrep(nu,Phi,Phim,O,Z,n_mode_max=None):
 
 class FEM:
 
-    def __init__(self,state_space_filename=None,
-                 state_space_ABC=None,
-                 fem_inputs=None,fem_outputs=None):
+    def __init__(self,verbose=logging.INFO,**kwargs):
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.setLevel(verbose)
+        self.logger.info('Instantiate')
+        if kwargs:
+            self.Start(**kwargs)
+
+    def Start(self,state_space_filename=None,
+              second_order_filename=None,
+              state_space_ABC=None,
+              second_order=None,
+              fem_inputs=None,fem_outputs=None):
+        self.logger.info('Start')
         if state_space_filename is not None:
             self.O,self.Z,self.Phim,self.Phi = ss2fem(*readStateSpace(filename=state_space_filename))
+        if second_order_filename is not None:
+            second_order,fem_inputs,fem_outputs = loadFEM2ndOrder(second_order_filename)
         if state_space_ABC is not None:
             self.O,self.Z,self.Phim,self.Phi = ss2fem(*readStateSpace(ABC=state_space_ABC))
-        self.N = self.O.size
+        if second_order is not None:
+            self.O,self.Z,self.Phim,self.Phi = second_order
+            self.O *= 2*np.pi
+            self.O = np.ravel(self.O)
+            self.Z = np.ravel(self.Z)
         self.INPUTS = fem_inputs
         self.OUTPUTS = fem_outputs
-        self.ins_idx = np.cumsum([x[1] for x in self.INPUTS])[:-1]
-        self.outs_idx = np.cumsum([x[1] for x in self.OUTPUTS])[:-1]
+        self.state = {'u':None,'y':None,'A':None,'B':None,'C':None,'D':None, 'x': None, 'step':0}
+        self.__setprop__()
+        self.info()
+        return "FEM"
+
+    def __setprop__(self):
+        self.N = self.O.size
+        c = np.cumsum([x[1] for x in self.INPUTS])
+        self.N_INPUTS = c[-1]
+        self.ins_idx = c[:-1]
+        c = np.cumsum([x[1] for x in self.OUTPUTS])
+        self.N_OUTPUTS = c[-1]
+        self.outs_idx = c[:-1]
         self.__Phim__ = {x:y for y,x in zip(np.split(self.Phim,self.ins_idx),[x[0] for x in self.INPUTS])}
         self.__Phi__ = {x:y for y,x in zip(np.split(self.Phi,self.outs_idx),[x[0] for x in self.OUTPUTS])}
+        m = self.O==0
+        if np.any(m):
+            self.hsv     = np.ones_like(self.O)*np.Inf
+            self.H2_norm = np.zeros_like(self.O)
+            m=~m
+            self.hsv[m]     = 0.25 * np.sqrt(np.sum(self.Phim[:,m]**2,0)) * np.sqrt(np.sum(self.Phi[:,m]**2,0)) / self.O[m] / self.Z[m]
+            self.H2_norm[m] = 2*self.hsv[m]*np.sqrt(self.O[m]*self.Z[m]/2/np.pi)
+        else:
+            self.hsv     = 0.25 * np.sqrt(np.sum(self.Phim**2,0)) * np.sqrt(np.sum(self.Phi**2,0)) / self.O / self.Z
+            self.H2_norm = 2*self.hsv*np.sqrt(self.O*self.Z/2/np.pi)
 
-    def state_space(self):
+    def info(self):
+        self.logger.info('FEM synopsis:')
+        self.logger.info(' * # of inputs: {}'.format(self.N_INPUTS))
+        self.logger.info(' * # of outputs: {}'.format(self.N_OUTPUTS))
+        self.logger.info(' * # of modes: {}'.format(self.O.size))
+        self.logger.info(' * $\Phi_m$ shape: %s',self.Phim.shape)
+        self.logger.info(' * $\Phi$ shape: %s',self.Phi.shape)
+        self.logger.info(' * eigen frequencies range: [{0:.3f},{1:.3f}]Hz'.format(self.O.min()/2/np.pi,self.O.max()/2/np.pi))
+        self.logger.info(' * damping ratio min-max: [{0:.1f},{1:.1f}]%'.format(self.Z.min()*1e2,self.Z.max()*1e2))
+        self.logger.info(' * Hankel singular values min-max: [{0:g},{1:g}]'.format(self.hsv.min(),self.hsv.max()))
+        self.logger.info(' * mode H2 norm min-max: [{0:g},{1:g}]'.format(self.H2_norm.min(),self.H2_norm.max()))
+        self.logger.info(' * system H2 norm: {0:g}'.format(np.sqrt(np.sum(self.H2_norm**2))))
+
+    def hsv_sort(self,start_idx=0):
+        idx = np.argsort(self.hsv[start_idx:])[::-1]
+        idx = np.hstack([np.arange(start_idx),idx+start_idx])
+        self.hsv_idx = idx
+        self.O = self.O[idx]
+        self.Z = self.Z[idx]
+        self.Phim = self.Phim[:,idx]
+        self.Phi = self.Phi[:,idx]
+        self.__setprop__()
+
+    def c2s(self,a,b,dt):
+        em_upper = sparse.hstack((a, b))
+        em_lower = sparse.hstack((sparse.csr_matrix((b.shape[1], a.shape[0])),
+                                  sparse.csr_matrix((b.shape[1], b.shape[1]))))
+        em = sparse.vstack((em_upper, em_lower)).tocsc()
+        ms = slinalg.expm(dt * em)
+        ms = ms[:a.shape[0], :]
+        ad = ms[:, 0:a.shape[1]]
+        bd = ms[:, a.shape[1]:]
+        return ad.tocsr(),bd.toarray()
+
+    def state_space(self,dt=None):
         s = self.N,self.N
+        OZ = self.O*self.Z;
+        OZ[np.isnan(OZ)] = 0
         A = sparse.bmat( [[sparse.coo_matrix(s,dtype=np.float),sparse.eye(self.N,dtype=np.float)],
-                          [sparse.diags(-self.O**2),sparse.diags(-2*self.O*self.Z)]],
-                         format='dia')
+                          [sparse.diags(-self.O**2),sparse.diags(-2*OZ)]],
+                         format='csr')
         B = sparse.bmat( [[sparse.coo_matrix((self.N,self.Phim.shape[0]),dtype=np.float)],
-                                [self.Phim.T]],format='bsr')
-        C = sparse.bmat( [[self.Phi,sparse.coo_matrix((self.Phi.shape[0],self.N),dtype=np.float)]],format='bsr')
-        return A,B,C
+                                [self.Phim.T]],format='csr')
+        C = sparse.bmat( [[self.Phi,sparse.coo_matrix((self.Phi.shape[0],self.N),dtype=np.float)]],format='csr')
+        h = int(A.shape[0]/2)
+        print('State space synopsis:')
+        print(' * A shape: {0} ; Block diagonal test (0,{5:d},1,1): {1} {2} {3} {4}'.format(A.shape,
+              A[:h,:h].diagonal().sum(),
+              A[:h,h:].diagonal().sum(),
+              A[h:,:h].diagonal().sum()/A[h:,:h].sum(),
+              A[h:,h:].diagonal().sum()/A[h:,h:].sum(),int(A.shape[0]/2)))
+        print(' * B shape:',B.shape)
+        print(' * C shape:',C.shape)
+        if dt is not None:
+            Ad,Bd = self.c2s(A,B,dt)
+            print(' * discrete A shape: {0} ; Block diagonal test (0,{5:d},1,1): {1} {2} {3} {4}'.format(A.shape,
+                  Ad[:h,:h].diagonal().sum(),
+                  Ad[:h,h:].diagonal().sum(),
+                  Ad[h:,:h].diagonal().sum()/A[h:,:h].sum(),
+                  Ad[h:,h:].diagonal().sum()/A[h:,h:].sum(),int(A.shape[0]/2)))
+            return Ad,Bd,C
+        else:
+            return A,B,C
 
     def __call__(self,inputs,outputs):
         u = np.vstack(inputs.values())
@@ -94,6 +190,41 @@ class FEM:
             G[k,...] = freqrep(nu[k],_Phi_,_Phim_,self.O,self.Z,n_mode_max=None)
         return G
 
+    def mountTransferFunction(self,nu,axis='both'):
+        P = np.atleast_2d([-1]*4+[1]*4).T
+        ElTF = ()
+        AzTF = ()
+        if axis in ['elevation','both']:
+            G0 = self.G(nu,['OSS_ElDrive_F'],['OSS_ElDrive_D'])
+            ElTF = (np.squeeze(P.T@G0@P),)
+        if axis in ['azimuth','both']:
+            G0 = self.G(nu,['OSS_AzDrive_F'],['OSS_AzDrive_D'])
+            AzTF = (np.squeeze(P.T@G0@P),)
+        TF = ElTF+AzTF
+        if len(TF)>1:
+            return TF
+        else:
+            return TF[0]
+
+    def reduce(self,inputs=None,outputs=None,hsv_rel_threshold=None,n_mode_max=None):
+        if inputs is not None:
+            self.INPUTS = [(x,self.__Phim__[x].shape[0]) for x in inputs]
+            self.Phim = np.vstack([self.__Phim__[x] for x in inputs])
+        if outputs is not None:
+            self.OUTPUTS = [(x,self.__Phi__[x].shape[0]) for x in outputs]
+            self.Phi = np.vstack([self.__Phi__[x] for x in outputs])
+        if hsv_rel_threshold is not None:
+            hsv_max = np.max(self.hsv[~np.isinf(self.hsv)])
+            hsvn = self.hsv/hsv_max
+            n_mode_max = np.sum(hsvn>hsv_rel_threshold)
+        if n_mode_max is not None:
+            self.Phim = self.Phim[:,:n_mode_max]
+            self.Phi  = self.Phi[:,:n_mode_max]
+            self.O = self.O[:n_mode_max]
+            self.Z = self.Z[:n_mode_max]
+        self.__setprop__()
+        self.info()
+
     def grammian(self):
         X2 = np.zeros((self.N,self.N))
         X3 = X2
@@ -110,4 +241,54 @@ class FEM:
         Q = - B@B.T
         W = solve_lyapunov(A.toarray(),Q.toarray())
         return W
+
+    def Init(self,dt=0.5e-3,
+              inputs=None,outputs=None,
+              hsv_rel_threshold=None,n_mode_max=None):
+        self.logger.info('Init')
+        self.hsv_sort(start_idx=0)
+        self.reduce(inputs=inputs,outputs=outputs,
+                    hsv_rel_threshold=hsv_rel_threshold,
+                    n_mode_max=n_mode_max)
+        A,B,C = self.state_space(dt=dt)
+        self.state.update({'u':np.zeros(self.N_INPUTS),
+                           'y':np.zeros(self.N_OUTPUTS),
+                           'A':A,'B':B,'C':C,'D':None,
+                           'x':np.zeros(A.shape[1]),
+                           'step':0})
+
+    def Update(self,**kwargs):
+        _u = self.state['u']
+        a = 0
+        b = 0
+        for t,s in self.INPUTS:
+            b += s
+            if t in kwargs:
+                _u[a:b] = kwargs[t]
+            a += s
+
+        _x = self.state['x']
+        x_next = self.state['A']@_x + self.state['B']@_u
+        _y = self.state['C']@_x
+        self.state['x'] = x_next.flatten()
+        self.state['y'][:] = _y.ravel()
+        self.state['step']+=1
+
+    def Outputs(self,**kwargs):
+        d = {}
+        if kwargs:
+            outputs = kwargs['outputs']
+            a = 0
+            b = 0
+            for t,s in self.OUTPUTS:
+                b += s
+                if t in outputs:
+                    d[t] = self.state['y'][a:b]
+                a += s
+        return d
+
+    def Terminate(self,**kwargs):
+        return "FEM deleted"
+
+    
 
