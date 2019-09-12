@@ -5,18 +5,6 @@ simulation:
     IP: 127.0.0.1
 #    IP: 34.213.27.234
 drivers:
-  M1:
-    inputs:
-      Txyz:
-        size: [7,3]
-      Rxyz:
-        size: [7,3]
-  M2:
-    inputs:
-      Txyz:
-        size: [7,3]
-      Rxyz:
-        size: [7,3]
   wind_loads:
     outputs:
       OSS_TopEnd_6F:
@@ -52,8 +40,24 @@ drivers:
     outputs:
       OSS_M1_lcl:
         size: 42
+        logs:
+          decimation: 1
       MC_M2_lcl_6D:
         size: 42
+        logs:
+          decimation: 1
+  M1:
+    inputs:
+      Txyz:
+        size: [7,3]
+      Rxyz:
+        size: [7,3]
+  M2:
+    inputs:
+      Txyz:
+        size: [7,3]
+      Rxyz:
+        size: [7,3]
   router:
     server: false
     inputs:
@@ -64,12 +68,20 @@ drivers:
     outputs:
       M1 Txyz:
         lien: [M1,Txyz]
+        logs:
+          decimation: 1
       M1 Rxyz:
         lien: [M1,Rxyz]
+        logs:
+          decimation: 1
       M2 Txyz:
         lien: [M2,Txyz]
+        logs:
+          decimation: 1
       M2 Rxyz:
         lien: [M2,Rxyz]
+        logs:
+          decimation: 1
   science:
     outputs:
       wfe_rms:

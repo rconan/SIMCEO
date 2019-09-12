@@ -33,7 +33,7 @@
 % Matlab--ZMQ\footnote{\url{https://github.com/fagg/matlab-zmq}} is a Matlab wrapper for ZeroMQ.
 % ZeroMQ \footnote{\url{http://zeromq.org/}} is the messaging library used for the communications between SIMCEO client and server.
 % Both Matlab--ZMQ and ZeroMQ are shipped pre--compiled with SIMCEO. 
-% You need however to add, to the Matlab search path, the path to ZeroMQ.
+% You need however to add, to the Matlab search path, the path t o ZeroMQ.
 % To do so, move Matlab current folder to SIMCEO folder and at the Matlab prompt enter:
 % \\\texttt{>> addpath([pwd,'/matlab-zmq/your-os/lib/'])}\\\texttt{>> savepath}\\
 % where \texttt{your-os} is either \texttt{unix}, \texttt{mac} \texttt{windows7} or \texttt{windows10}.
@@ -96,6 +96,7 @@ import pickle
 import zlib
 import logging
 import copy
+from numpy.linalg import norm
 
 logging.basicConfig()
 
@@ -405,7 +406,8 @@ The message that triggers the call to the \emph{Update} method is
 @
 <<SGMT>>=
     def Update(self, mirror=None, inputs=None):
-        state = copy.deepcopy(self.state0)
+        self.logger.debug("Updating %s", mirror)
+        state = self.gmt.state
         for dof in inputs:
             if dof=='Rxy':
                 data = np.zeros((7,3))
@@ -418,7 +420,8 @@ The message that triggers the call to the \emph{Update} method is
             else:
                 data = np.asarray( inputs[dof], order='C', dtype=np.float64 )
             #data = np.transpose( np.reshape( data , (-1,7) ) )
-            state[mirror][dof][:] += data
+            self.logger.debug(" . DOF: %s=|%s|", dof, np.array_str(norm(data,axis=1)))
+            state[mirror][dof][:] = self.state0[mirror][dof][:] + data
             """
             if key=="TxyzRxyz":
                 state[mirror]['Txyz'][:] += data[:,:3].copy()
