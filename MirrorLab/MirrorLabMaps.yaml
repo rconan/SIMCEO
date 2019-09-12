@@ -1,0 +1,8 @@
+S1:
+  - GMT1 120814-15 cor avg resamp 10mm stitched.h5
+  - GMT1 120814-15 cor avg resamp 10mm stitched -14modes.h5
+  - GMT1 120814-15 cor avg resamp 10mm stitched -27modes.h5
+S2:
+  - GMT2 avg stitched.h5
+  - GMT2 avg stitched -14modes.h5
+  - GMT2 avg stitched -27modes.h5
