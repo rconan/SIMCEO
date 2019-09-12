@@ -33,7 +33,7 @@
 % Matlab--ZMQ\footnote{\url{https://github.com/fagg/matlab-zmq}} is a Matlab wrapper for ZeroMQ.
 % ZeroMQ \footnote{\url{http://zeromq.org/}} is the messaging library used for the communications between SIMCEO client and server.
 % Both Matlab--ZMQ and ZeroMQ are shipped pre--compiled with SIMCEO. 
-% You need however to add, to the Matlab search path, the path to ZeroMQ.
+% You need however to add, to the Matlab search path, the path t o ZeroMQ.
 % To do so, move Matlab current folder to SIMCEO folder and at the Matlab prompt enter:
 % \\\texttt{>> addpath([pwd,'/matlab-zmq/your-os/lib/'])}\\\texttt{>> savepath}\\
 % where \texttt{your-os} is either \texttt{unix}, \texttt{mac} \texttt{windows7} or \texttt{windows10}.
@@ -41,7 +41,7 @@
 % \subsection{UBJSON}
 % \label{sec:ubjson}
 
-% Universal Binary JSON (UBJSON\footnote{\url{http://ubjson.org/}}) is the message format used to exchanumpynge data between SIMCEO client and server.
+% Universal Binary JSON (UBJSON\footnote{\url{http://ubjson.org/}}) is the message format used toTapio.Helin@lut.fi exchanumpynge data between SIMCEO client and server.
 % The Matlab UBJSON encoder and decoder is JSONLAB.
 % SIMCEO comes with its own version of JSONLAB that fixes a few bugs.
 % To add JSONLAB to the Matlab search path, move Matlab current folder to SIMCEO folder and at the Matlab prompt enter:
@@ -96,8 +96,15 @@ import pickle
 import zlib
 import logging
 import copy
+from numpy.linalg import norm
 
 logging.basicConfig()
+
+try:
+    from IM.Telescope import FEM, WindLoad
+except:
+    logging.warning('IM package not found!')
+
 
 SIMCEOPATH = os.path.abspath(os.path.dirname(__file__))
 
@@ -275,6 +282,14 @@ def __getitem__(self,key):
             return self.ops[-1]
     elif key=='testComm':
         return testComm()
+    elif key=="FEM":
+        if not hasattr(self,'fem'):
+            self.fem = FEM()
+        return self.fem
+    elif key=="WindLoad":
+        if not hasattr(self,'winds'):
+            self.winds = WindLoad()
+        return self.winds
     else:
         raise KeyError("Available keys are: GMT, ATM or OP")
 @ 
@@ -366,6 +381,7 @@ The message that triggers the call to the \emph{Start} method is
         self.logger.info('Start')
         if mirror_args:
             self.gmt[mirror] = getattr(ceo,"GMT_"+mirror)( **mirror_args )
+            self.state0 = copy.deepcopy(self.gmt.state)
         return "GMT"
 @
 
@@ -390,7 +406,8 @@ The message that triggers the call to the \emph{Update} method is
 @
 <<SGMT>>=
     def Update(self, mirror=None, inputs=None):
-        state = copy.deepcopy(self.state0)
+        self.logger.debug("Updating %s", mirror)
+        state = self.gmt.state
         for dof in inputs:
             if dof=='Rxy':
                 data = np.zeros((7,3))
@@ -398,12 +415,13 @@ The message that triggers the call to the \emph{Update} method is
                 dof = 'Rxyz'
             elif dof=='Tz':
                 data = np.zeros((7,3))
-                data[:,2] = np.asarray( inputs[dof], order='C', dtype=np.float64 )
+                data[:,2] = np.ravel(np.asarray( inputs[dof], order='C', dtype=np.float64 ))
                 dof = 'Txyz'
             else:
                 data = np.asarray( inputs[dof], order='C', dtype=np.float64 )
             #data = np.transpose( np.reshape( data , (-1,7) ) )
-            state[mirror][dof][:] += data
+            self.logger.debug(" . DOF: %s=|%s|", dof, np.array_str(norm(data,axis=1)))
+            state[mirror][dof][:] = self.state0[mirror][dof][:] + data
             """
             if key=="TxyzRxyz":
                 state[mirror]['Txyz'][:] += data[:,:3].copy()
@@ -939,8 +957,10 @@ A [[dos]] simulation is defined with a parameter file [[dos.yaml]].
 <<dos simulation section>>
 <<dos drivers section>>
 <<init.py>>=
-from .dos import DOS
+from . import mpc_driver
+from . import control
 from . import driver
+from .dos import DOS
 @
 \subsection{Simulation}
 \label{sec:simulation}
@@ -967,7 +987,7 @@ import threading
 import numpy as np
 from ruamel.yaml import YAML
 yaml=YAML(typ='safe')
-from . import driver
+from .driver import Server, Client, Atmosphere
 <<dos.py>>=
 <<dos imports>>
 
@@ -1050,14 +1070,14 @@ for d,v in self.cfg['drivers'].items():
     if os.path.isfile(prm_file+'.yaml') or os.path.isfile(prm_file+'.pickle'):
         self.logger.info('New driver: %s',d)
         if 'server' in v and v['server'] is False:
-            self.drivers[d] = driver.Client(tau,d,
+            self.drivers[d] = Client(tau,d,
                                             self.logs,
                                             verbose=verbose,**v)
         elif d=='atmosphere':
-            self.drivers[d] = driver.Atmosphere(tau,d,self.agent,
+            self.drivers[d] = Atmosphere(tau,d,self.agent,
                                                 verbose=verbose)
         else:
-            self.drivers[d] = driver.Server(tau,d,
+            self.drivers[d] = Server(tau,d,
                                             self.logs,
                                             self.agent,
                                             verbose=verbose,**v)
@@ -1144,18 +1164,37 @@ def associate(self,prm):
         self.msg['class_id'] = 'GMT'
         self.msg_args['Start'].update(prm)
         if 'state' in prm:
-            self.msg_args['Init']['state'] = {prm['mirror']:{k:np.array(v) for k,v in prm['state'].items()}}
+            self.msg_args['Init']['state'] = {prm['mirror']:
+                                              {k:np.asarray(v,dtype=np.double) \
+                                               for k,v in prm['state'].items()}}
             self.msg_args['Start'].pop('state')
         self.msg_args['Update']['mirror'] = prm['mirror']
         self.msg_args['Update']['inputs'].update(\
                 {k_i:v_i.data for k_i,v_i in self.inputs.items()})
-    else:
+    elif 'FEM' in prm:
+        self.msg['class_id'] = 'FEM'
+        self.msg_args['Start'].update(prm['FEM']['build'])
+        self.msg_args['Init'].update({'dt':self.tau,
+                                      'inputs':list(self.inputs.keys()),
+                                      'outputs':list(self.outputs.keys())})
+        self.msg_args['Init'].update(prm['FEM']['reduction'])
+        self.msg_args['Update'].update(\
+                {k_i:v_i.data for k_i,v_i in self.inputs.items()})
+        self.msg_args['Outputs']['outputs'] += [k_o for k_o in self.outputs]
+    elif 'wind loads' in prm:
+        self.msg['class_id'] = 'WindLoad'
+        self.msg_args['Start'].update(prm['wind loads'])
+        self.msg_args['Start'].update({'fs':1/self.tau})
+        self.msg_args['Outputs']['outputs'] += [k_o for k_o in self.outputs]
+    elif 'source' in prm:
         self.msg['class_id'] = 'OP'
         if isinstance(prm['source']['zenith'],dict):
-            prm['source']['zenith'] = np.asarray(prm['source']['zenith']['value'])*\
+            prm['source']['zenith'] = np.asarray(prm['source']['zenith']['value'],
+                                                 dtype=np.double)*\
                                       units[prm['source']['zenith']['units']]
         if isinstance(prm['source']['azimuth'],dict):
-            prm['source']['azimuth'] = np.asarray(prm['source']['azimuth']['value'])*\
+            prm['source']['azimuth'] = np.asarray(prm['source']['azimuth']['value'],
+                                                  dtype=np.double)*\
                                       units[prm['source']['azimuth']['units']]
         prm['source'].update({'samplingTime':self.tau*self.sampling_rate})
         self.msg_args['Start'].update({'source_args':prm['source'],
@@ -1163,10 +1202,10 @@ def associate(self,prm):
                                        'sensor_args':{},
                                        'calibration_source_args':None,
                                        'calibrate_args':None})
-
         if 'source_attributes' in prm:
-            src_attr = prm['source_attributes'] 
-            src_attr.append({'timeStamp':self.delay*self.tau})
+            src_attr = prm['source_attributes']
+            print(src_attr)
+            src_attr.update({'timeStamp':self.delay*self.tau})
             if 'rays' in src_attr and \
                'rot_angle' in  src_attr['rays'] and \
                isinstance(src_attr['rays']['rot_angle'],dict):
@@ -1433,7 +1472,7 @@ def output(self,step):
             m = 'Outputs'
             if self.msg_args[m]['outputs']:
                 <<client-server exchange>>
-                self.logger.debug("Reply: %s",reply)
+                #self.logger.debug("Reply: %s",reply)
                 for k,v in self.outputs.items():
                     if (step-self.delay)%v.sampling_rate==0:
                         self.logger.debug('Outputing %s!',k)
@@ -1778,16 +1817,25 @@ def diagram(self,**kwargs):
 \subsection{Main}
 \label{sec:dos.main}
 
-<<sim.py>>=
-
+<<dos imports>>=
 import sys
-import dos
+@
+<<dos.py>>=
 
 if __name__=="__main__":
 
-    dospath = sys.argv[1]
-    sim = dos.DOS(dospath)
+    import matplotlib.pyplot as plt
+
+    #dospath = sys.argv[1]
+    dospath = 'dos/M2TT'
+    sim = DOS(dospath,verbose=logging.INFO,show_timing=2)
     sim._run_()
+    fig,ax = plt.subplots()
+    ax.plot(*sim.logs.entries['science']['segment_tiptilt'].timeSeries,'.-')
+    ax.grid()
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Seg. TT. [arcsec]')
+    plt.show()
 @
 
 \section{SIMCEO Service}
