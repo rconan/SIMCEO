@@ -61,6 +61,14 @@ class FEM:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(verbose)
         self.logger.info('Instantiate')
+        # ---
+        p = np.zeros((3,42))
+        p[:3,:3] =  np.eye(3)
+        PT = np.vstack([np.roll(p,k,axis=1) for k in range(0,42,6)])
+        PR = np.roll(PT,3,axis=1)
+        Q = np.vstack([PT,PR])
+        self.P = {'OSS_M1_lcl':Q,'MC_M2_lcl_6D':Q}
+        # ---
         if kwargs:
             self.Start(**kwargs)
 
@@ -98,6 +106,9 @@ class FEM:
         self.outs_idx = c[:-1]
         self.__Phim__ = {x:y for y,x in zip(np.split(self.Phim,self.ins_idx),[x[0] for x in self.INPUTS])}
         self.__Phi__ = {x:y for y,x in zip(np.split(self.Phi,self.outs_idx),[x[0] for x in self.OUTPUTS])}
+        for k in self.P:
+            self.__Phi__[k] = self.P[k]@self.__Phi__[k]
+        #self.Phi = np.vstack([self.__Phi__[x] for x in self.OUTPUTS])
         m = self.O==0
         if np.any(m):
             self.hsv     = np.ones_like(self.O)*np.Inf
@@ -244,9 +255,10 @@ class FEM:
 
     def Init(self,dt=0.5e-3,
               inputs=None,outputs=None,
-              hsv_rel_threshold=None,n_mode_max=None):
+              hsv_rel_threshold=None,n_mode_max=None,
+              start_idx=0):
         self.logger.info('Init')
-        self.hsv_sort(start_idx=0)
+        self.hsv_sort(start_idx=start_idx)
         self.reduce(inputs=inputs,outputs=outputs,
                     hsv_rel_threshold=hsv_rel_threshold,
                     n_mode_max=n_mode_max)
@@ -284,6 +296,11 @@ class FEM:
                 b += s
                 if t in outputs:
                     d[t] = self.state['y'][a:b]
+                    """
+                    if t in self.P:
+                        #print('HERE')
+                        d[t] = self.P[t]@d[t]
+                    """
                 a += s
         return d
 
