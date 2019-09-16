@@ -134,7 +134,7 @@ class Server(Driver):
                     self.msg['method_id'] = ''
                     self.msg['args'].clear()
                     reply = self.server._recv_()
-                    self.logger.debug("Reply: %s",reply)
+                    #self.logger.debug("Reply: %s",reply)
                     for k,v in self.outputs.items():
                         if (step-self.delay)%v.sampling_rate==0:
                             self.logger.debug('Outputing %s!',k)
@@ -171,18 +171,37 @@ class Server(Driver):
             self.msg['class_id'] = 'GMT'
             self.msg_args['Start'].update(prm)
             if 'state' in prm:
-                self.msg_args['Init']['state'] = {prm['mirror']:{k:np.array(v) for k,v in prm['state'].items()}}
+                self.msg_args['Init']['state'] = {prm['mirror']:
+                                                  {k:np.asarray(v,dtype=np.double) \
+                                                   for k,v in prm['state'].items()}}
                 self.msg_args['Start'].pop('state')
             self.msg_args['Update']['mirror'] = prm['mirror']
             self.msg_args['Update']['inputs'].update(\
                     {k_i:v_i.data for k_i,v_i in self.inputs.items()})
-        else:
+        elif 'FEM' in prm:
+            self.msg['class_id'] = 'FEM'
+            self.msg_args['Start'].update(prm['FEM']['build'])
+            self.msg_args['Init'].update({'dt':self.tau,
+                                          'inputs':list(self.inputs.keys()),
+                                          'outputs':list(self.outputs.keys())})
+            self.msg_args['Init'].update(prm['FEM']['reduction'])
+            self.msg_args['Update'].update(\
+                    {k_i:v_i.data for k_i,v_i in self.inputs.items()})
+            self.msg_args['Outputs']['outputs'] += [k_o for k_o in self.outputs]
+        elif 'wind loads' in prm:
+            self.msg['class_id'] = 'WindLoad'
+            self.msg_args['Start'].update(prm['wind loads'])
+            self.msg_args['Start'].update({'fs':1/self.tau})
+            self.msg_args['Outputs']['outputs'] += [k_o for k_o in self.outputs]
+        elif 'source' in prm:
             self.msg['class_id'] = 'OP'
             if isinstance(prm['source']['zenith'],dict):
-                prm['source']['zenith'] = np.asarray(prm['source']['zenith']['value'])*\
+                prm['source']['zenith'] = np.asarray(prm['source']['zenith']['value'],
+                                                     dtype=np.double)*\
                                           units[prm['source']['zenith']['units']]
             if isinstance(prm['source']['azimuth'],dict):
-                prm['source']['azimuth'] = np.asarray(prm['source']['azimuth']['value'])*\
+                prm['source']['azimuth'] = np.asarray(prm['source']['azimuth']['value'],
+                                                      dtype=np.double)*\
                                           units[prm['source']['azimuth']['units']]
             prm['source'].update({'samplingTime':self.tau*self.sampling_rate})
             self.msg_args['Start'].update({'source_args':prm['source'],
@@ -190,10 +209,10 @@ class Server(Driver):
                                            'sensor_args':{},
                                            'calibration_source_args':None,
                                            'calibrate_args':None})
-
             if 'source_attributes' in prm:
-                src_attr = prm['source_attributes'] 
-                src_attr.append({'timeStamp':self.delay*self.tau})
+                src_attr = prm['source_attributes']
+                print(src_attr)
+                src_attr.update({'timeStamp':self.delay*self.tau})
                 if 'rays' in src_attr and \
                    'rot_angle' in  src_attr['rays'] and \
                    isinstance(src_attr['rays']['rot_angle'],dict):

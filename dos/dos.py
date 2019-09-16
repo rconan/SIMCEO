@@ -5,11 +5,12 @@ import threading
 import numpy as np
 from ruamel.yaml import YAML
 yaml=YAML(typ='safe')
-from . import driver
+from .driver import Server, Client, Atmosphere
 import zmq
 import pickle
 import zlib
 from graphviz import Digraph
+import sys
 
 logging.basicConfig()
 
@@ -56,14 +57,14 @@ class DOS(threading.Thread):
             if os.path.isfile(prm_file+'.yaml') or os.path.isfile(prm_file+'.pickle'):
                 self.logger.info('New driver: %s',d)
                 if 'server' in v and v['server'] is False:
-                    self.drivers[d] = driver.Client(tau,d,
+                    self.drivers[d] = Client(tau,d,
                                                     self.logs,
                                                     verbose=verbose,**v)
                 elif d=='atmosphere':
-                    self.drivers[d] = driver.Atmosphere(tau,d,self.agent,
+                    self.drivers[d] = Atmosphere(tau,d,self.agent,
                                                         verbose=verbose)
                 else:
-                    self.drivers[d] = driver.Server(tau,d,
+                    self.drivers[d] = Server(tau,d,
                                                     self.logs,
                                                     self.agent,
                                                     verbose=verbose,**v)
@@ -287,3 +288,18 @@ class broker:
         pobj = zlib.decompress(zobj)
         return pickle.loads(pobj)
 
+
+if __name__=="__main__":
+
+    import matplotlib.pyplot as plt
+
+    #dospath = sys.argv[1]
+    dospath = 'dos/M2TT'
+    sim = DOS(dospath,verbose=logging.INFO,show_timing=2)
+    sim._run_()
+    fig,ax = plt.subplots()
+    ax.plot(*sim.logs.entries['science']['segment_tiptilt'].timeSeries,'.-')
+    ax.grid()
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Seg. TT. [arcsec]')
+    plt.show()

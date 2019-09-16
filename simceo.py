@@ -13,8 +13,15 @@ import pickle
 import zlib
 import logging
 import copy
+from numpy.linalg import norm
 
 logging.basicConfig()
+
+try:
+    from IM.Telescope import FEM, WindLoad
+except:
+    logging.warning('IM package not found!')
+
 
 SIMCEOPATH = os.path.abspath(os.path.dirname(__file__))
 
@@ -155,9 +162,11 @@ class SGMT(Sfunction):
         self.logger.info('Start')
         if mirror_args:
             self.gmt[mirror] = getattr(ceo,"GMT_"+mirror)( **mirror_args )
+            self.state0 = copy.deepcopy(self.gmt.state)
         return "GMT"
     def Update(self, mirror=None, inputs=None):
-        state = copy.deepcopy(self.state0)
+        self.logger.debug("Updating %s", mirror)
+        state = self.gmt.state
         for dof in inputs:
             if dof=='Rxy':
                 data = np.zeros((7,3))
@@ -165,12 +174,13 @@ class SGMT(Sfunction):
                 dof = 'Rxyz'
             elif dof=='Tz':
                 data = np.zeros((7,3))
-                data[:,2] = np.asarray( inputs[dof], order='C', dtype=np.float64 )
+                data[:,2] = np.ravel(np.asarray( inputs[dof], order='C', dtype=np.float64 ))
                 dof = 'Txyz'
             else:
                 data = np.asarray( inputs[dof], order='C', dtype=np.float64 )
             #data = np.transpose( np.reshape( data , (-1,7) ) )
-            state[mirror][dof][:] += data
+            self.logger.debug(" . DOF: %s=|%s|", dof, np.array_str(norm(data,axis=1)))
+            state[mirror][dof][:] = self.state0[mirror][dof][:] + data
             """
             if key=="TxyzRxyz":
                 state[mirror]['Txyz'][:] += data[:,:3].copy()
@@ -445,6 +455,14 @@ class broker(threading.Thread):
                 return self.ops[-1]
         elif key=='testComm':
             return testComm()
+        elif key=="FEM":
+            if not hasattr(self,'fem'):
+                self.fem = FEM()
+            return self.fem
+        elif key=="WindLoad":
+            if not hasattr(self,'winds'):
+                self.winds = WindLoad()
+            return self.winds
         else:
             raise KeyError("Available keys are: GMT, ATM or OP")
 
