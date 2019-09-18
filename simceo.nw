@@ -1059,6 +1059,10 @@ class DOS(threading.Thread):
     def pctComplete(self):
         return round(100*self.__k_step/(self.N_SAMPLE-1))
 @
+
+\subsubsection{Driver instanciation}
+\label{sec:driver-instanciation}
+
 Each device must have a corresponding parameter file in the same directory than
 the configuration file.
 <<check parameter file existence>>=
@@ -1113,6 +1117,10 @@ for d,v in self.cfg['drivers'].items():
 %       mode: segment tip-tilt
 %       stroke: 1e-6
 % @
+
+\subsubsection{IO linking}
+\label{sec:io-linking}
+
 Once each driver is instantiated, their inputs and outputs are tied
 <<linking the drivers IO>>=
 for k_d in self.drivers:
@@ -1137,6 +1145,10 @@ def tie(self,drivers):
         self.data = drivers[d].inputs[io].data
         self.size = self.data.shape
 @ %def tie
+
+\subsubsection{Device association}
+\label{sec:dev-assoc}
+
 The device parameters are loaded from the device parameter file and the device
 is associated to the driver
 <<device to driver association>>=
@@ -1232,6 +1244,10 @@ def associate(self,prm):
 @
 Next we check if an atmosphere is define
 @
+
+\subsubsection{Simulation execution}
+\label{sec:sim-exec}
+
 Once the parameters are loaded and the drivers linked, we call the drivers [[start]]
 <<starting the drivers>>=
 self.__start = map(lambda x: x.start(), self.drivers.values())
@@ -1578,6 +1594,7 @@ from . import control
 <<control.py>>=
 <<control imports>>
 from .mpc_driver import MPC
+from .MountController import Mount
 import numpy as np
 class System:
     def __init__(self,**kwargs):
@@ -1586,7 +1603,7 @@ class System:
                                       kwargs['transfer function']['denom'])
         elif 'zeros poles gain' in kwargs:
             self.system = signal.dlti(kwargs['transfer function']['zeros'],
-                                      kwargs['transfer function']['poles'],
+                                      Kwargs['transfer function']['poles'],
                                       kwargs['transfer function']['gain'])
         else:
             raise Exception("System should be of the type "+\
