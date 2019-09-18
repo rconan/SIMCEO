@@ -101,9 +101,9 @@ from numpy.linalg import norm
 logging.basicConfig()
 
 try:
-    from IM.Telescope import FEM, WindLoad
+    from Telescope import FEM, WindLoad
 except:
-    logging.warning('IM package not found!')
+    logging.warning('Telescope package not found!')
 
 
 SIMCEOPATH = os.path.abspath(os.path.dirname(__file__))
