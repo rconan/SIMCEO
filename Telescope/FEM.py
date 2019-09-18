@@ -5,6 +5,9 @@ from scipy.sparse import linalg as slinalg
 import scipy.io as spio
 import h5py
 import logging
+import matplotlib.pyplot as plt
+
+logging.basicConfig()
 
 def readStateSpace(filename=None,ABC=None):
     if filename is not None:
@@ -61,14 +64,6 @@ class FEM:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(verbose)
         self.logger.info('Instantiate')
-        # ---
-        p = np.zeros((3,42))
-        p[:3,:3] =  np.eye(3)
-        PT = np.vstack([np.roll(p,k,axis=1) for k in range(0,42,6)])
-        PR = np.roll(PT,3,axis=1)
-        Q = np.vstack([PT,PR])
-        self.P = {'OSS_M1_lcl':Q,'MC_M2_lcl_6D':Q}
-        # ---
         if kwargs:
             self.Start(**kwargs)
 
@@ -76,7 +71,8 @@ class FEM:
               second_order_filename=None,
               state_space_ABC=None,
               second_order=None,
-              fem_inputs=None,fem_outputs=None):
+              fem_inputs=None,fem_outputs=None,
+              reorder_RBM=False):
         self.logger.info('Start')
         if state_space_filename is not None:
             self.O,self.Z,self.Phim,self.Phi = ss2fem(*readStateSpace(filename=state_space_filename))
@@ -93,6 +89,8 @@ class FEM:
         self.OUTPUTS = fem_outputs
         self.state = {'u':None,'y':None,'A':None,'B':None,'C':None,'D':None, 'x': None, 'step':0}
         self.__setprop__()
+        if reorder_RBM:
+            self.reorder_rbm()
         self.info()
         return "FEM"
 
@@ -106,9 +104,6 @@ class FEM:
         self.outs_idx = c[:-1]
         self.__Phim__ = {x:y for y,x in zip(np.split(self.Phim,self.ins_idx),[x[0] for x in self.INPUTS])}
         self.__Phi__ = {x:y for y,x in zip(np.split(self.Phi,self.outs_idx),[x[0] for x in self.OUTPUTS])}
-        for k in self.P:
-            self.__Phi__[k] = self.P[k]@self.__Phi__[k]
-        #self.Phi = np.vstack([self.__Phi__[x] for x in self.OUTPUTS])
         m = self.O==0
         if np.any(m):
             self.hsv     = np.ones_like(self.O)*np.Inf
@@ -119,6 +114,16 @@ class FEM:
         else:
             self.hsv     = 0.25 * np.sqrt(np.sum(self.Phim**2,0)) * np.sqrt(np.sum(self.Phi**2,0)) / self.O / self.Z
             self.H2_norm = 2*self.hsv*np.sqrt(self.O*self.Z/2/np.pi)
+
+    def reorder_rbm(self):
+        p = np.zeros((3,42))
+        p[:3,:3] =  np.eye(3)
+        PT = np.vstack([np.roll(p,k,axis=1) for k in range(0,42,6)])
+        PR = np.roll(PT,3,axis=1)
+        Q = np.vstack([PT,PR])
+        self.P = {'OSS_M1_lcl':Q,'MC_M2_lcl_6D':Q}
+        for k in self.P:
+            self.__Phi__[k] = self.P[k]@self.__Phi__[k]
 
     def info(self):
         self.logger.info('FEM synopsis:')
@@ -137,6 +142,16 @@ class FEM:
         idx = np.argsort(self.hsv[start_idx:])[::-1]
         idx = np.hstack([np.arange(start_idx),idx+start_idx])
         self.hsv_idx = idx
+        self.O = self.O[idx]
+        self.Z = self.Z[idx]
+        self.Phim = self.Phim[:,idx]
+        self.Phi = self.Phi[:,idx]
+        self.__setprop__()
+
+    def O_sort(self,start_idx=0):
+        idx = np.argsort(self.O[start_idx:])
+        idx = np.hstack([np.arange(start_idx),idx+start_idx])
+        self.O_idx = idx
         self.O = self.O[idx]
         self.Z = self.Z[idx]
         self.Phim = self.Phim[:,idx]
@@ -201,15 +216,19 @@ class FEM:
             G[k,...] = freqrep(nu[k],_Phi_,_Phim_,self.O,self.Z,n_mode_max=None)
         return G
 
-    def mountTransferFunction(self,nu,axis='both'):
+    def mountTransferFunction(self,nu,axis='both',
+                              ElDrive_F = 'OSS_ElDrive_F',
+                              ElDrive_D = 'OSS_ElDrive_D',
+                              AzDrive_F = 'OSS_AzDrive_F',
+                              AzDrive_D = 'OSS_AzDrive_D'):
         P = np.atleast_2d([-1]*4+[1]*4).T
         ElTF = ()
         AzTF = ()
         if axis in ['elevation','both']:
-            G0 = self.G(nu,['OSS_ElDrive_F'],['OSS_ElDrive_D'])
+            G0 = self.G(nu,[ElDrive_F],[ElDrive_D])
             ElTF = (np.squeeze(P.T@G0@P),)
         if axis in ['azimuth','both']:
-            G0 = self.G(nu,['OSS_AzDrive_F'],['OSS_AzDrive_D'])
+            G0 = self.G(nu,[AzDrive_F],[AzDrive_D])
             AzTF = (np.squeeze(P.T@G0@P),)
         TF = ElTF+AzTF
         if len(TF)>1:
@@ -217,13 +236,42 @@ class FEM:
         else:
             return TF[0]
 
-    def reduce(self,inputs=None,outputs=None,hsv_rel_threshold=None,n_mode_max=None):
+    def bodeMag(nu,TF,_filter_=None,legend=None,ax=None):
+        if not isinstance(TF,list):
+            TF = [TF]
+        if ax is None:
+            fig,ax = plt.subplots()
+            fig.set_size_inches(10,5)
+        for _TF_ in TF:
+            if _filter_ is not None:
+                _TF_ *= _filter_
+            ax.semilogx(nu,20*np.log10(np.abs(_TF_)));
+        ax.grid(which='both')
+        ax.set_xlabel('Frequency [Hz]')
+        ax.set_ylabel('Magnitude [dB]')
+        if legend is not None:
+            ax.legend(legend)
+        return ax
+
+    def reduce(self,inputs=None,outputs=None,hsv_rel_threshold=None,n_mode_max=None,
+               outputs_mapping=None):
         if inputs is not None:
             self.INPUTS = [(x,self.__Phim__[x].shape[0]) for x in inputs]
             self.Phim = np.vstack([self.__Phim__[x] for x in inputs])
         if outputs is not None:
             self.OUTPUTS = [(x,self.__Phi__[x].shape[0]) for x in outputs]
             self.Phi = np.vstack([self.__Phi__[x] for x in outputs])
+        if outputs_mapping is not None:
+            (old_outputs,new_output,T) = outputs_mapping
+            O = np.vstack([self.__Phi__[x] for x in old_outputs])
+            Q = T@O
+            outputs_name = [x[0] for x in self.OUTPUTS]
+            for k in old_outputs:
+                self.OUTPUTS.pop(outputs_name.index(k))
+                self.__Phi__.pop(k)
+            self.__Phi__[new_output] = Q
+            self.OUTPUTS += (new_output,T.shape[0])
+            self.Phi = np.vstack([self.__Phi__[x] for x in self.OUTPUTS])
         if hsv_rel_threshold is not None:
             hsv_max = np.max(self.hsv[~np.isinf(self.hsv)])
             hsvn = self.hsv/hsv_max
