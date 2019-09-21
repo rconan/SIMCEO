@@ -960,7 +960,7 @@ A [[dos]] simulation is defined with a parameter file [[dos.yaml]].
 from . import mpc_driver
 from . import control
 from . import driver
-from .dos import DOS
+from .dos import DOS, Logs
 @
 \subsection{Simulation}
 \label{sec:simulation}
@@ -1042,8 +1042,7 @@ class DOS(threading.Thread):
             self.N_SAMPLE))
 
         if show_timing>0:
-            self.diagram(filename=os.path.join(self.DOS_REPO,
-                                               path_to_config_dir.replace('/','_')),format='png')
+            self.diagram(filename=os.path.join(self.DOS_REPO,'timing'),format='png')
 
     <<starting the simulation>>
 
