@@ -10,6 +10,22 @@ import matplotlib.pyplot as plt
 logging.basicConfig()
 
 def readStateSpace(filename=None,ABC=None):
+    """
+    Load the A, B and C matrix of a state space model.
+    The matrix are either in a mat-file with A as a sparse matrix
+    or in a list
+
+    Parameters
+    ----------
+    filename : string
+        The name of the mat-file
+    ABC : list
+        The list containing the A, B and C matrices
+
+    Returns
+    -------
+    tuple of numpy array: the A, B,  C and D=None matrices
+    """
     if filename is not None:
         f = h5py.File(filename, 'r')
         AG=f['A']
@@ -31,6 +47,29 @@ def readStateSpace(filename=None,ABC=None):
     return (A,B,C,None)
 
 def loadFEM2ndOrder(filename):
+    """
+    Load a second order model from a mat-file
+    The mat-file contains the following variables:
+     . eigenfrequencies
+     . proportionalDampingVec
+     . Phim
+     . Phi
+     . FEM_IO
+    FEM_IO is a dictionary with the following keys:
+     . 'inputs_name'
+     . 'inputs_size'
+     . 'outputs_name'
+     . 'outputs_size'
+
+    Parameters
+    ----------
+    filename : string
+        The name of the mat-file
+
+    Returns
+    -------
+    eigenfrequencies, proportionalDampingVec, Phim, Phim, fem_inputs and fem_outputs
+    """
     print('LOADING {}'.format(filename))
     data = spio.loadmat(filename)
     fem_inputs=[(x[0][0],y[0]) for x,y in zip(data['FEM_IO']['inputs_name'][0,0],data['FEM_IO']['inputs_size'][0][0])]
@@ -39,6 +78,22 @@ def loadFEM2ndOrder(filename):
     return tuple(data[x] for x in var),fem_inputs,fem_outputs
 
 def ss2fem(*args):
+    """
+    Convert a FEM continuous state space model into second order form
+
+    Parameters
+    ----------
+    A : ndarray
+       The state space A matrix
+    B : ndarray
+       The state space B matrix
+    C : ndarray
+       The state space C matrix
+
+    Returns
+    -------
+    O, Z, Phim, Phi: the eigen frequencies, the damping coefficients, the inputs to modes and modes to outputs matrix transforms
+    """
     A,B,C = args[:3]
     h = int(A.shape[0]/2)
     O = np.sqrt(-A[h:,:h].diagonal())
@@ -48,6 +103,24 @@ def ss2fem(*args):
     return O,Z,Phim.toarray(),Phi.toarray()
 
 def freqrep(nu,Phi,Phim,O,Z,n_mode_max=None):
+    """
+    Computes the FEM transfer function
+
+    Parameters
+    ----------
+    nu: ndarray
+       The frequency vector in Hz
+    Phi: ndarray
+       The  modes to outputs matrix transform
+    Phi: ndarray
+       The inputs to modes matrix transform
+    O: ndarray
+        The eigen frequencies
+    Z: ndarray
+        The damping coefficients
+    n_mode_max: int
+        The number of modes, default: None (all the modes)
+    """
     s = 2*1j*np.pi*nu
     if n_mode_max is None:
         q = s**2 + 2*s*Z*O + O**2
@@ -139,6 +212,9 @@ class FEM:
         self.logger.info(' * system H2 norm: {0:g}'.format(np.sqrt(np.sum(self.H2_norm**2))))
 
     def hsv_sort(self,start_idx=0):
+        """
+        Sort the eigen modes according the Hankel singular values
+        """
         idx = np.argsort(self.hsv[start_idx:])[::-1]
         idx = np.hstack([np.arange(start_idx),idx+start_idx])
         self.hsv_idx = idx
@@ -149,6 +225,9 @@ class FEM:
         self.__setprop__()
 
     def O_sort(self,start_idx=0):
+        """
+        Sort the eigen modes according the eigen frequencies
+        """
         idx = np.argsort(self.O[start_idx:])
         idx = np.hstack([np.arange(start_idx),idx+start_idx])
         self.O_idx = idx
@@ -159,6 +238,22 @@ class FEM:
         self.__setprop__()
 
     def c2s(self,a,b,dt):
+        """
+        Convert a continuous state space model in a discrete one
+
+        Parameters:
+        -----------
+        a : ndarray
+            The continuous state space A matrix
+        b : ndarray
+            The continuous state space B matrix
+        dt: float
+            The discrete model sampling time
+
+        Returns:
+        --------
+        ad, bd : the discrete state space A and B matrices
+        """
         em_upper = sparse.hstack((a, b))
         em_lower = sparse.hstack((sparse.csr_matrix((b.shape[1], a.shape[0])),
                                   sparse.csr_matrix((b.shape[1], b.shape[1]))))
@@ -170,6 +265,19 @@ class FEM:
         return ad.tocsr(),bd.toarray()
 
     def state_space(self,dt=None):
+        """
+        Build the state space model from the second order model, if dt is given returns the discrete state space
+        otherwise returns return the continuous state space
+
+        Parameters
+        ----------
+        dt: float
+            The discrete model sampling time
+
+        Returns:
+        --------
+        A,B,C : the state space A, B and C matrices
+        """
         s = self.N,self.N
         OZ = self.O*self.Z;
         OZ[np.isnan(OZ)] = 0
@@ -209,6 +317,22 @@ class FEM:
         return {x:y for x,y in zip(outputs,np.vsplit(y,idx))}
 
     def G(self,nu,inputs,outputs):
+        """
+        Computes the model transfer function between inputs and outputs
+
+        Parameters:
+        -----------
+        nu: ndarray
+            The frequency vector in Hz
+        inputs: list
+            The list of model inputs
+        outputs: list
+            The list of model outputs
+
+        Returns:
+        --------
+        G : the transfer function matrix
+        """
         _Phim_ = np.vstack([self.__Phim__[x] for x in inputs])
         _Phi_ = np.vstack([self.__Phi__[x] for x in outputs])
         G = np.zeros((nu.size,_Phi_.shape[0],_Phim_.shape[0]),dtype=np.complex)
@@ -221,6 +345,9 @@ class FEM:
                               ElDrive_D = 'OSS_ElDrive_D',
                               AzDrive_F = 'OSS_AzDrive_F',
                               AzDrive_D = 'OSS_AzDrive_D'):
+        """
+        Computes the mount transfer function
+        """
         P = np.atleast_2d([-1]*4+[1]*4).T
         ElTF = ()
         AzTF = ()
@@ -255,6 +382,24 @@ class FEM:
 
     def reduce(self,inputs=None,outputs=None,hsv_rel_threshold=None,n_mode_max=None,
                outputs_mapping=None):
+        """
+        Reduces the models according to the given
+         . inputs
+         . outputs
+         . Hankel singular value threshold
+         . number of modes
+
+        Parameters:
+        -----------
+        inputs: list
+            The list of model inputs
+        outputs: list
+            The list of model outputs
+        hsv_rel_threshold: float
+            Hankel singular value threshold
+        n_mode_max:
+            Number of modes
+        """
         if inputs is not None:
             self.INPUTS = [(x,self.__Phim__[x].shape[0]) for x in inputs]
             self.Phim = np.vstack([self.__Phim__[x] for x in inputs])
