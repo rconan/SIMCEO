@@ -28,7 +28,7 @@ drivers:
       OSS_ElDrive_F:
         size: 8
       OSS_GIRDrive_F:
-        isze: 4
+        size: 4
       OSS_M1_lcl_6F:
         size: 42
       OSS_Cell_lcl_6F:
@@ -58,7 +58,6 @@ drivers:
         size: 42
         logs:
           decimation: 1
-COMMENTS:
   Mount:
     server: false
     inputs:
