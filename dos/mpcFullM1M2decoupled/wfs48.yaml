@@ -25,14 +25,14 @@ interaction matrices:
         args:
           decoupled: true
           withM1: true
-          filterMirrorRotation: true
+          filterMirrorRotation: false
           stroke: [1.0e-6,1.0e-6,1.0e-6,1.0e-6,1.0e-6]
           fluxThreshold: 0.5
           includeBM: true
     pseudo_inverse:
       n_threshold: [2,2,2,2,2,2,0]
       insert_zeros: [null,null,null,null,null,null,[5,10]]    
-    filename: AGWS_full_decoupled_rotfilt
+    filename: AGWS_full_decoupled
 COMMENTS:
   interaction matrices: 
     calibrations:
@@ -48,4 +48,4 @@ COMMENTS:
       pseudo_inverse:
         n_threshold: [2,2,2,2,2,2,0]
         insert_zeros: [null,null,null,null,null,null,[5,10]]
-    #  filename: AGWS_decoupled_rotfilt
+      filename: AGWS_full_decoupled

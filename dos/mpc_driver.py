@@ -51,7 +51,7 @@ class MPC:
         # QP problem quadratic term
         Qkron = sparse.kron(sparse.eye(self.npred),Q)
         Rkron = sparse.kron(sparse.eye(self.npred),R)
-        P = sparse.csc_matrix((Gamma.T@Qkron@Gamma) + Rkron)
+        P = sparse.csc_matrix((Gamma.T.dot(Qkron).dot(Gamma)) + Rkron)
 
         # Constraint matrices
         # Test if there are incremental bound constraints

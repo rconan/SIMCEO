@@ -35,6 +35,7 @@ class DOS(threading.Thread):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(verbose)
 
+        self.DOS_REPO = path_to_config_dir
         cfg_file = os.path.join(path_to_config_dir,'dos.yaml')
         self.logger.info('Reading config from %s',cfg_file)
         with open(cfg_file) as f:
@@ -50,7 +51,7 @@ class DOS(threading.Thread):
         self.pushed = False
         self.initialized = False
         tau = 1/self.cfg['simulation']['sampling frequency']
-        self.logs = Logs(tau)
+        self.logs = Logs(tau,logs_repo=self.DOS_REPO)
         self.drivers = {}
         for d,v in self.cfg['drivers'].items():
             prm_file = os.path.join(path_to_config_dir,d)
@@ -96,7 +97,7 @@ class DOS(threading.Thread):
             self.N_SAMPLE))
 
         if show_timing>0:
-            self.diagram(filename=path_to_config_dir.replace('/','_'),format='png')
+            self.diagram(filename=os.path.join(self.DOS_REPO,'timing'),format='png')
 
     def push(self):
         self.logger.info('Pushing configuration to server')
@@ -237,8 +238,9 @@ class Entry:
         values = np.vstack(self.data) if self.data[0].ndim<2 else np.dstack(self.data)
         return time,values
 class Logs:
-    def __init__(self,sampling_time):
+    def __init__(self,sampling_time=0,logs_repo=''):
         self.sampling_time = sampling_time
+        self.logs_repo = logs_repo
         self.entries = {}
     def add(self,driver,output,decimation,delay=0):
         if driver in self.entries:
@@ -259,6 +261,19 @@ class Logs:
         else:
             line = ["The 'logs' has no entries!"]
         return "\n".join(line)
+    def dump(self):
+        filename = os.path.join(self.logs_repo,'logs.pickle')
+        data = {'sampling_time':self.sampling_time}
+        data.update(self.entries)
+        with open(filename,'wb') as f:
+            pickle.dump(data,f)
+    def load(self):
+        filename = os.path.join(self.logs_repo,'logs.pickle')
+        with open(filename,'rb') as f:
+            data = pickle.load(f)
+        self.sampling_time = data['sampling_time']
+        data.pop('sampling_time')
+        self.entries.update(data)
     @property
     def N_entries(self):
         return sum([len(_) for _ in self.entries.values()])

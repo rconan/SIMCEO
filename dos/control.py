@@ -1,6 +1,7 @@
 from scipy import signal
 import pickle
 from .mpc_driver import MPC
+from .MountController import Mount
 import numpy as np
 class System:
     def __init__(self,**kwargs):
@@ -9,7 +10,7 @@ class System:
                                       kwargs['transfer function']['denom'])
         elif 'zeros poles gain' in kwargs:
             self.system = signal.dlti(kwargs['transfer function']['zeros'],
-                                      kwargs['transfer function']['poles'],
+                                      Kwargs['transfer function']['poles'],
                                       kwargs['transfer function']['gain'])
         else:
             raise Exception("System should be of the type "+\
