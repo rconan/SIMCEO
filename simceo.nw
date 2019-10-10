@@ -1600,16 +1600,7 @@ from .source import Source
 import numpy as np
 class System:
     def __init__(self,**kwargs):
-        if 'transfer function' in kwargs:
-            self.system = signal.dlti(kwargs['transfer function']['num'],
-                                      kwargs['transfer function']['denom'])
-        elif 'zeros poles gain' in kwargs:
-            self.system = signal.dlti(kwargs['transfer function']['zeros'],
-                                      Kwargs['transfer function']['poles'],
-                                      kwargs['transfer function']['gain'])
-        else:
-            raise Exception("System should be of the type "+\
-                            "'transfer function' or 'zeros poles gains'")
+        self.system = signal.dlti(*tuple(kwargs['parameters'].values()))
         self.__xout = np.zeros(0)
         self.__yout = np.zeros(0)
 
