@@ -134,6 +134,7 @@ class Timer(object):
 <<SGMT>>
 <<SAtmosphere>>
 <<SOpticalPath>>
+<<SEdgeSensors>>
 
 <<broker>>
 
@@ -290,6 +291,10 @@ def __getitem__(self,key):
         if not hasattr(self,'winds'):
             self.winds = WindLoad()
         return self.winds
+    elif key=="EdgeSensors":
+        if not hasattr(self,'ses'):
+            self.ses = SEdgeSensors(self.sgmt.gmt)
+        return self.ses
     else:
         raise KeyError("Available keys are: GMT, ATM or OP")
 @ 
@@ -508,12 +513,12 @@ class SOpticalPath(Sfunction):
         self.idx = idx
         self.gmt = gmt
         self.atm = atm
-	self.sensor = None
+        self.sensor = None
 @ %def idx sensor
 \paragraph{Start}
 
 The message that triggers the call to the \emph{Start} method is
-<<SOpticalPath Start message>>=     
+<<SOpticalPath Start message>>=
 {
 "class_id": "OP",
 "method_id": "Start",
@@ -824,7 +829,108 @@ The message that triggers a call to the \emph{InitializeConditions} method is
                 self.logger.info("Saving command matrix to database %s!",filename)
                 db[str(key)] = C
                 db.close()
-@ 
+@
+
+\subsubsection{The SEdgeSensors class}
+\label{sec:sedgesensors-classe}
+
+<<SEdgeSensors>>=
+class SEdgeSensors(Sfunction):
+
+    def __init__(self, gmt, verbose=logging.INFO):
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.setLevel(verbose)
+        self.logger.info('Instantiate')
+        self.gmt = gmt
+        self.es = ceo.DistanceEdgeSensors(self.gmt.M1)
+
+    <<SEdgeSensor methods>>
+@
+\paragraph{Start}
+
+<<SEdgeSensor methods>>=
+def Start(self):
+    self.comm_matrix = {}
+    self.es.calibration()
+    return "EdgeSensors"
+@
+\paragraph{Terminate}
+
+<<SEdgeSensor methods>>=
+def Terminate(self,*args,**kwargs): 
+    self.logger.info("EdgeSensors deleted")
+    return "EdgeSensors deleted!"
+@
+\paragraph{Update}
+
+<<SEdgeSensor methods>>=
+def Update(self,*args,**kwargs): 
+    self.es.data()
+@
+\paragraph{Outputs}
+
+<<SEdgeSensor methods>>=
+def Outputs(self,outputs=['deltas']):
+    return {outputs[0]:self.es.d}
+@
+\paragraph{InitializeConditions}
+
+<<SEdgeSensor methods>>=
+def Init(self,
+         calibrations=None,
+         filename=None,
+         pseudo_inverse={}):
+    self.logger.info('INIT')
+
+    if filename is not None:
+        filepath = os.path.join(SIMCEOPATH,"calibration_dbs",filename)
+        db = shelve.open(filepath)
+
+        if os.path.isfile(filepath+".dir"):
+            self.logger.info("Loading command matrix from existing database %s!",filename)
+            for key in db:
+                C = db[key]
+                self.comm_matrix[key] = C
+                db[key] = C
+            db.close()
+            return
+
+    with Timer():
+        for key in calibrations: # Through calibrations
+            self.logger.info('Calibrating: %s',key)
+            calibs = calibrations[key]
+            stroke = calibs['args']['stroke']
+            self.gmt.reset()
+            De = []
+            for mirror in ['M1']:
+                for seg in range(7):
+                    print(seg,end='')
+                    for mode in ['Txyz','Rxyz']:
+                        print(mode,end='')
+                        for axis in range(3):
+                            print(axis,end='')
+                            self.gmt.reset()
+                            state = self.gmt.state
+                            state[mirror][mode][seg,axis] = stroke
+                            (self.gmt)^=state
+                            self.es.data()
+                            dp = self.es.d
+                            self.gmt.reset()
+                            state = self.gmt.state
+                            state[mirror][mode][seg,axis] = -stroke
+                            (self.gmt)^=state
+                            self.es.data()
+                            dm = self.es.d
+                            De += [0.5*(dp-dm)]
+                    print('')
+            De = np.hstack(De)/stroke
+            C = ceo.CalibrationVault([De],**pseudo_inverse)
+
+            if filename is not None:
+                self.logger.info("Saving command matrix to database %s!",filename)
+                db[str(key)] = C
+                db.close()
+@
 
 \subsection{The CalibrationMatrix class}
 \label{sec:calibr-class}
@@ -1198,6 +1304,10 @@ def associate(self,prm):
         self.msg['class_id'] = 'WindLoad'
         self.msg_args['Start'].update(prm['wind loads'])
         self.msg_args['Start'].update({'fs':1/self.tau})
+        self.msg_args['Outputs']['outputs'] += [k_o for k_o in self.outputs]
+    elif 'edge sensors' in prm:
+        self.msg['class_id'] = 'EdgeSensors'
+        self.msg_args['Init'].update(prm['interaction matrices'])
         self.msg_args['Outputs']['outputs'] += [k_o for k_o in self.outputs]
     elif 'source' in prm:
         self.msg['class_id'] = 'OP'

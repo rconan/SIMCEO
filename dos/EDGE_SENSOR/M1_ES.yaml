@@ -1,0 +1,7 @@
+edge sensors: {}
+interaction matrices: 
+  calibrations:
+    M1RBM:
+      args:
+        stroke: 1.0e-06
+  filename: M1ES
