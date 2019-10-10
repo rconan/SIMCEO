@@ -1561,7 +1561,7 @@ def init(self):
     self.logger.debug('Initializing!')
     self.system.init()
 def update(self,step):
-    if step>=self.delay and (step-self.delay)%self.sampling_rate==0:
+    if self.inputs and (step>=self.delay and (step-self.delay)%self.sampling_rate==0):
         self.logger.debug('Updating!')
         u = np.hstack([_.data.reshape(1,-1) for _  in self.inputs.values()])
         self.system.update(u)
@@ -1596,6 +1596,7 @@ from . import control
 <<control imports>>
 from .mpc_driver import MPC
 from .MountController import Mount
+from .source import Source
 import numpy as np
 class System:
     def __init__(self,**kwargs):
@@ -1707,8 +1708,8 @@ class Logs:
         data.update(self.entries)
         with open(filename,'wb') as f:
             pickle.dump(data,f)
-    def load(self):
-        filename = os.path.join(self.logs_repo,'logs.pickle')
+    def load(self,logs_name='logs.pickle'):
+        filename = os.path.join(self.logs_repo,logs_name)
         with open(filename,'rb') as f:
             data = pickle.load(f)
         self.sampling_time = data['sampling_time']
