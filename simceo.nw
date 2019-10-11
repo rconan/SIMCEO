@@ -1373,6 +1373,8 @@ and [[init]] methods:
 self.__init = map(lambda x: x.init(), self.drivers.values())
 <<initializing the simulation>>=
 def init(self):
+    if not self.pushed:
+        self.push()
     self.logger.info('Initializing')
     list(self.__init)
     self.initialized = True
@@ -1675,7 +1677,7 @@ def update(self,step):
         self.logger.debug('Updating!')
         u = np.hstack([_.data.reshape(1,-1) for _  in self.inputs.values()])
         self.system.update(u)
-        self.logger.debug('u: %s',u)
+        self.logger.debug('u: %s',u.shape)
 
 def output(self,step):
     if step>=self.delay:
@@ -1716,15 +1718,20 @@ class System:
 
     def init(self):
         self.system = self.system._as_ss()
-        self.__xout = np.zeros((1,self.system.A.shape[0]))
-        self.__yout = np.zeros((1, self.system.C.shape[0]))
+        self.__xout = np.zeros((self.system.A.shape[1],1))
+        self.__yout = np.zeros((self.system.C.shape[0],1))
 
     def update(self,u):
-        self.__yout = np.dot(self.system.C, self.__xout) + np.dot(self.system.D, u)
-        self.__xout = np.dot(self.system.A, self.__xout) + np.dot(self.system.B, u)
+        try:
+            self.__yout = self.system.C @ self.__xout + self.system.D @ u
+            self.__xout = self.system.A @ self.__xout + self.system.B @ u
+        except ValueError:
+            u = u.reshape(self.system.B.shape[1],1)
+            self.__yout = self.system.C @ self.__xout + self.system.D @ u
+            self.__xout = self.system.A @ self.__xout + self.system.B @ u
 
     def output(self):
-        return self.__yout
+        return np.atleast_2d(self.__yout.ravel())
 @
 
 \subsubsection{Atmosphere}
