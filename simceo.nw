@@ -303,8 +303,11 @@ If the ID tag of the optical path is just \textbf{OP}, a new \emph{SOpticalPath}
 
 When the \emph{Terminate} method of an \emph{SOpticalPath} object is called, the object is removed from the optical path list \emph{ops}. 
 <<broker run details>>=
-if class_id[:2]=="OP" and method_id=="Terminate":
-    self.ops.pop(0)
+if method_id=="Terminate":
+    if class_id[:2]=="OP":
+        self.ops.pop(0)
+    elif class_id=="EdgeSensors":
+        delattr(self,'ses')
 @
 The value return by the method of the invoked object is sent back to the S--function:
 <<broker run details>>=
@@ -851,7 +854,6 @@ class SEdgeSensors(Sfunction):
 <<SEdgeSensor methods>>=
 def Start(self):
     self.comm_matrix = {}
-    self.es.calibration()
     return "EdgeSensors"
 @
 \paragraph{Terminate}
@@ -859,6 +861,7 @@ def Start(self):
 <<SEdgeSensor methods>>=
 def Terminate(self,*args,**kwargs): 
     self.logger.info("EdgeSensors deleted")
+    del(self.es)
     return "EdgeSensors deleted!"
 @
 \paragraph{Update}
@@ -882,6 +885,11 @@ def Init(self,
          pseudo_inverse={}):
     self.logger.info('INIT')
 
+    state0 = self.gmt.state
+    self.gmt.reset()
+    self.es.calibration()
+    (self.gmt)^=state0
+
     if filename is not None:
         filepath = os.path.join(SIMCEOPATH,"calibration_dbs",filename)
         db = shelve.open(filepath)
@@ -899,7 +907,9 @@ def Init(self,
         for key in calibrations: # Through calibrations
             self.logger.info('Calibrating: %s',key)
             calibs = calibrations[key]
+            print('calibs',calibs)
             stroke = calibs['args']['stroke']
+            state0 = self.gmt.state
             self.gmt.reset()
             De = []
             for mirror in ['M1']:
@@ -924,7 +934,9 @@ def Init(self,
                             De += [0.5*(dp-dm)]
                     print('')
             De = np.hstack(De)/stroke
+            print('pseudo_inverse',pseudo_inverse)
             C = ceo.CalibrationVault([De],**pseudo_inverse)
+            (self.gmt)^=state0
 
             if filename is not None:
                 self.logger.info("Saving command matrix to database %s!",filename)
@@ -1066,6 +1078,7 @@ A [[dos]] simulation is defined with a parameter file [[dos.yaml]].
 from . import mpc_driver
 from . import control
 from . import driver
+from . import tools
 from .dos import DOS, Logs
 @
 \subsection{Simulation}
@@ -1388,6 +1401,7 @@ def stepping(self):
     v = self.drivers.values()
     for l in range(self.N_SAMPLE):
         self.logger.debug('Step #%d',l)
+        self.__k_step = l
         yield [x.update(l) for x in v] + [x.output(l) for x in v]
 <<running the simulation>>=
 def run(self):
@@ -1397,9 +1411,11 @@ def run(self):
         self.init()
     self.logger.info('Running')
     with Timer():
-        for self.__k_step in range(self.N_SAMPLE):
-            next(self.step)
-    self.terminate()
+        try:
+            while True:
+                next(self.step)
+        except StopIteration:
+            self.terminate()
 def _run_(self):
     if not self.pushed:
         self.push()
@@ -1550,14 +1566,18 @@ self.logger = logging.getLogger(tag)
 self.logger.setLevel(verbose)
 self.delay         = delay
 self.sampling_rate = sampling_rate
-self.inputs        = {}
-if 'inputs' in kwargs:
-    for k,v in kwargs['inputs'].items():
+self.inputs       = {}
+try:
+    for k in kwargs['inputs']:
+        v = kwargs['inputs'][k]
         self.logger.info('New input: %s',k)
         self.inputs[k] = Input(k,**v)
+except KeyError:
+    self.logger.info('No inputs!')
 self.outputs       = {}
-if 'outputs' in kwargs:
-    for k,v in kwargs['outputs'].items():
+try:
+    for k in kwargs['outputs']:
+        v = kwargs['outputs'][k]
         self.logger.info('New output: %s',k)
         if not 'sampling_rate' in v:
             v['sampling_rate']=self.sampling_rate
@@ -1576,6 +1596,16 @@ if 'outputs' in kwargs:
             v['logs'] = logs.entries[tag][k]
             self.logger.info('Output logged in!')
         self.outputs[k] = Output(k,**v)
+except KeyError:
+    self.logger.info('No inputs!')
+try:
+    self.shape = kwargs['shape']
+except KeyError:
+    self.shape = None
+try:
+    self.split = kwargs['split']
+except KeyError:
+    self.split = {'indices_or_sections':1,'axis':0}
 @
 @ %def Server       
 The inherited [[Server]] method are:
@@ -1683,13 +1713,17 @@ def output(self,step):
     if step>=self.delay:
         a = 0
         b = 0
+        data = np.split( self.system.output().reshape(self.shape), **self.split)
         for k,v in self.outputs.items():
             if (step-self.delay)%v.sampling_rate==0:
                 self.logger.debug('Outputing %s!',k)
+                v.data[...] = data.pop(0).reshape(v.size)
+                """
                 b = a + v.data.size
                 self.logger.debug('%s [%s]: [%d,%d]',k,v.size,a,b)
                 v.data[...] = self.system.output()[0,a:b].reshape(v.size)
                 a = b
+                """
                 if v.logs is not None and (step-self.delay)%v.logs.decimation==0:
                     self.logger.debug('LOGGING')
                     v.logs.add(v.data.copy())

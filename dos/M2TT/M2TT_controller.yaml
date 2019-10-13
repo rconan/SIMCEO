@@ -1,5 +1,5 @@
 System:
   sampling time: 50e-3 # second
-  transfer function:
+  parameters:
     num: [-0.25]
     denom: [1,-1]
