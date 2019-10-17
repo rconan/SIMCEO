@@ -14,7 +14,7 @@ def linear_estimator_2_dos(estimator,dos_path, B_or_D='D'):
     if B_or_D=='D':
         A = np.zeros((n,n))
         B = np.zeros_like(estimator)
-        C = np.zeros(n)
+        C = np.zeros((n,n))
         D = estimator
     sys = {'System': { 'parameters': {'A':A ,'B':B,'C':C,'D':D} } }
     with open(dos_path+'.pickle', 'wb') as f:
