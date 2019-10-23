@@ -1,0 +1,113 @@
+simulation:
+  sampling frequency: 1 # [Hertz]
+  duration: 50 # [seconds]
+  server:
+    IP: 34.222.243.173
+
+drivers:
+  M1:
+    delay: 0 # [samples]
+    sampling_rate: 1 # [sample]
+    inputs:
+      Txyz:
+        size: [7,3]
+      Rxyz:
+        size: [7,3]
+      modes:
+        size: [7,46] # 27]  
+  M2:
+    delay: 0 # [samples]
+    sampling_rate: 1 # [sample]
+    inputs:
+      Txyz:
+        size: [7,3]
+      Rxyz:
+        size: [7,3]
+
+  wfs48:
+    delay: 0 # [samples]
+    sampling_rate: 1 # [sample]
+    outputs:
+      data:
+        sampling_rate: 1 # [sample]
+        size: 13824
+#        logs:
+#          decimation: 1        
+      M12_RBM:
+        sampling_rate: 1 # [sample]
+        size: 406
+        logs:
+          decimation: 1
+
+  ReconstructorM:
+    delay: 0 # [samples]
+    sampling_rate: 1 # [sample]
+    server: false
+    inputs:
+      SH-WFS:
+        lien: [wfs48,data]
+    outputs:
+      x_hat:
+        size: 406 # 273
+        logs:
+          decimation: 1
+
+  AcO_controller:
+    server: false
+    inputs:
+      x_hat:
+#        lien: [wfs48,M12_RBM]
+        lien: [ReconstructorM,x_hat]        
+    shape: [7, 58] #39]
+    split:
+      indices_or_sections: [3, 6, 9, 12]
+      axis: 1    
+    outputs:
+      M1 Txyz:
+        sampling_rate: 1 # [sample]
+        lien: [M1,Txyz]
+        logs:
+          decimation: 1
+      M1 Rxyz:
+        sampling_rate: 1 # [sample]
+        lien: [M1,Rxyz] 
+        logs:
+          decimation: 1
+      M2 Txyz:
+        sampling_rate: 1 # [sample]
+        lien: [M2,Txyz] 
+        logs:
+          decimation: 1
+      M2 Rxyz:
+        sampling_rate: 1 # [sample]
+        lien: [M2,Rxyz] 
+        logs:
+          decimation: 1
+      M1 BM:
+        sampling_rate: 1 # [sample]
+        lien: [M1,modes] 
+        logs:
+          decimation: 1          
+
+  science:
+    outputs:
+      wfe_rms:
+        size: 1
+        logs:
+          decimation: 1
+      tiptilt:
+        size: 2
+        logs:
+          decimation: 1
+      segment_piston:
+        size: 7
+        logs:
+          decimation: 1    
+      segment_tiptilt:
+        size: 14
+        logs:
+          decimation: 1
+          
+COMMENTS:
+
+
