@@ -27,3 +27,6 @@ sandbox
 *.svg
 /M1
 *.zip
+ReconstructorM.pickle
+ES2M1RBM.pickle
+timing

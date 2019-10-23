@@ -18,9 +18,9 @@ from numpy.linalg import norm
 logging.basicConfig()
 
 try:
-    from IM.Telescope import FEM, WindLoad
+    from Telescope import FEM, WindLoad
 except:
-    logging.warning('IM package not found!')
+    logging.warning('Telescope package not found!')
 
 
 SIMCEOPATH = os.path.abspath(os.path.dirname(__file__))
@@ -395,6 +395,89 @@ class SOpticalPath(Sfunction):
                 self.logger.info("Saving command matrix to database %s!",filename)
                 db[str(key)] = C
                 db.close()
+class SEdgeSensors(Sfunction):
+
+    def __init__(self, gmt, verbose=logging.INFO):
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.setLevel(verbose)
+        self.logger.info('Instantiate')
+        self.gmt = gmt
+        self.es = ceo.DistanceEdgeSensors(self.gmt.M1)
+
+    def Start(self):
+        self.comm_matrix = {}
+        return "EdgeSensors"
+    def Terminate(self,*args,**kwargs): 
+        self.logger.info("EdgeSensors deleted")
+        del(self.es)
+        return "EdgeSensors deleted!"
+    def Update(self,*args,**kwargs): 
+        self.es.data()
+    def Outputs(self,outputs=['deltas']):
+        return {outputs[0]:self.es.d}
+    def Init(self,
+             calibrations=None,
+             filename=None,
+             pseudo_inverse={}):
+        self.logger.info('INIT')
+
+        state0 = self.gmt.state
+        self.gmt.reset()
+        self.es.calibration()
+        (self.gmt)^=state0
+
+        if filename is not None:
+            filepath = os.path.join(SIMCEOPATH,"calibration_dbs",filename)
+            db = shelve.open(filepath)
+
+            if os.path.isfile(filepath+".dir"):
+                self.logger.info("Loading command matrix from existing database %s!",filename)
+                for key in db:
+                    C = db[key]
+                    self.comm_matrix[key] = C
+                    db[key] = C
+                db.close()
+                return
+
+        with Timer():
+            for key in calibrations: # Through calibrations
+                self.logger.info('Calibrating: %s',key)
+                calibs = calibrations[key]
+                print('calibs',calibs)
+                stroke = calibs['args']['stroke']
+                state0 = self.gmt.state
+                self.gmt.reset()
+                De = []
+                for mirror in ['M1']:
+                    for seg in range(7):
+                        print(seg,end='')
+                        for mode in ['Txyz','Rxyz']:
+                            print(mode,end='')
+                            for axis in range(3):
+                                print(axis,end='')
+                                self.gmt.reset()
+                                state = self.gmt.state
+                                state[mirror][mode][seg,axis] = stroke
+                                (self.gmt)^=state
+                                self.es.data()
+                                dp = self.es.d
+                                self.gmt.reset()
+                                state = self.gmt.state
+                                state[mirror][mode][seg,axis] = -stroke
+                                (self.gmt)^=state
+                                self.es.data()
+                                dm = self.es.d
+                                De += [0.5*(dp-dm)]
+                        print('')
+                De = np.hstack(De)/stroke
+                print('pseudo_inverse',pseudo_inverse)
+                C = ceo.CalibrationVault([De],**pseudo_inverse)
+                (self.gmt)^=state0
+
+                if filename is not None:
+                    self.logger.info("Saving command matrix to database %s!",filename)
+                    db[str(key)] = C
+                    db.close()
 
 class broker(threading.Thread):
 
@@ -463,6 +546,10 @@ class broker(threading.Thread):
             if not hasattr(self,'winds'):
                 self.winds = WindLoad()
             return self.winds
+        elif key=="EdgeSensors":
+            if not hasattr(self,'ses'):
+                self.ses = SEdgeSensors(self.sgmt.gmt)
+            return self.ses
         else:
             raise KeyError("Available keys are: GMT, ATM or OP")
 
@@ -503,8 +590,11 @@ class broker(threading.Thread):
                 print("@(broker)> Recovering gracefully...")
                 class_id = ""
                 args_out = "The server has failed!"
-            if class_id[:2]=="OP" and method_id=="Terminate":
-                self.ops.pop(0)
+            if method_id=="Terminate":
+                if class_id[:2]=="OP":
+                    self.ops.pop(0)
+                elif class_id=="EdgeSensors":
+                    delattr(self,'ses')
             #self.socket.send(ubjson.dumpb(args_out,no_float32=True))
             self._send_(args_out)
 

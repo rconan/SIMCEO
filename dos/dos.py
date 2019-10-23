@@ -105,6 +105,8 @@ class DOS(threading.Thread):
         self.pushed = True
 
     def init(self):
+        if not self.pushed:
+            self.push()
         self.logger.info('Initializing')
         list(self.__init)
         self.initialized = True
@@ -113,6 +115,7 @@ class DOS(threading.Thread):
         v = self.drivers.values()
         for l in range(self.N_SAMPLE):
             self.logger.debug('Step #%d',l)
+            self.__k_step = l
             yield [x.update(l) for x in v] + [x.output(l) for x in v]
 
     def run(self):
@@ -122,9 +125,11 @@ class DOS(threading.Thread):
             self.init()
         self.logger.info('Running')
         with Timer():
-            for self.__k_step in range(self.N_SAMPLE):
-                next(self.step)
-        self.terminate()
+            try:
+                while True:
+                    next(self.step)
+            except StopIteration:
+                self.terminate()
     def _run_(self):
         if not self.pushed:
             self.push()
@@ -267,8 +272,8 @@ class Logs:
         data.update(self.entries)
         with open(filename,'wb') as f:
             pickle.dump(data,f)
-    def load(self):
-        filename = os.path.join(self.logs_repo,'logs.pickle')
+    def load(self,logs_name='logs.pickle'):
+        filename = os.path.join(self.logs_repo,logs_name)
         with open(filename,'rb') as f:
             data = pickle.load(f)
         self.sampling_time = data['sampling_time']

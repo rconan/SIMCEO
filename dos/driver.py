@@ -57,14 +57,18 @@ class Server(Driver):
         self.logger.setLevel(verbose)
         self.delay         = delay
         self.sampling_rate = sampling_rate
-        self.inputs        = {}
-        if 'inputs' in kwargs:
-            for k,v in kwargs['inputs'].items():
+        self.inputs       = {}
+        try:
+            for k in kwargs['inputs']:
+                v = kwargs['inputs'][k]
                 self.logger.info('New input: %s',k)
                 self.inputs[k] = Input(k,**v)
+        except KeyError:
+            self.logger.info('No inputs!')
         self.outputs       = {}
-        if 'outputs' in kwargs:
-            for k,v in kwargs['outputs'].items():
+        try:
+            for k in kwargs['outputs']:
+                v = kwargs['outputs'][k]
                 self.logger.info('New output: %s',k)
                 if not 'sampling_rate' in v:
                     v['sampling_rate']=self.sampling_rate
@@ -83,6 +87,16 @@ class Server(Driver):
                     v['logs'] = logs.entries[tag][k]
                     self.logger.info('Output logged in!')
                 self.outputs[k] = Output(k,**v)
+        except KeyError:
+            self.logger.info('No inputs!')
+        try:
+            self.shape = kwargs['shape']
+        except KeyError:
+            self.shape = None
+        try:
+            self.split = kwargs['split']
+        except KeyError:
+            self.split = {'indices_or_sections':1,'axis':0}
         self.server        = server
         self.msg = {'class_id':'',
                     'method_id':'',
@@ -193,6 +207,10 @@ class Server(Driver):
             self.msg_args['Start'].update(prm['wind loads'])
             self.msg_args['Start'].update({'fs':1/self.tau})
             self.msg_args['Outputs']['outputs'] += [k_o for k_o in self.outputs]
+        elif 'edge sensors' in prm:
+            self.msg['class_id'] = 'EdgeSensors'
+            self.msg_args['Init'].update(prm['interaction matrices'])
+            self.msg_args['Outputs']['outputs'] += [k_o for k_o in self.outputs]
         elif 'source' in prm:
             self.msg['class_id'] = 'OP'
             if isinstance(prm['source']['zenith'],dict):
@@ -237,14 +255,18 @@ class Client(Driver):
         self.logger.setLevel(verbose)
         self.delay         = delay
         self.sampling_rate = sampling_rate
-        self.inputs        = {}
-        if 'inputs' in kwargs:
-            for k,v in kwargs['inputs'].items():
+        self.inputs       = {}
+        try:
+            for k in kwargs['inputs']:
+                v = kwargs['inputs'][k]
                 self.logger.info('New input: %s',k)
                 self.inputs[k] = Input(k,**v)
+        except KeyError:
+            self.logger.info('No inputs!')
         self.outputs       = {}
-        if 'outputs' in kwargs:
-            for k,v in kwargs['outputs'].items():
+        try:
+            for k in kwargs['outputs']:
+                v = kwargs['outputs'][k]
                 self.logger.info('New output: %s',k)
                 if not 'sampling_rate' in v:
                     v['sampling_rate']=self.sampling_rate
@@ -263,6 +285,16 @@ class Client(Driver):
                     v['logs'] = logs.entries[tag][k]
                     self.logger.info('Output logged in!')
                 self.outputs[k] = Output(k,**v)
+        except KeyError:
+            self.logger.info('No inputs!')
+        try:
+            self.shape = kwargs['shape']
+        except KeyError:
+            self.shape = None
+        try:
+            self.split = kwargs['split']
+        except KeyError:
+            self.split = {'indices_or_sections':1,'axis':0}
         self.system = None
 
     def start(self):
@@ -271,23 +303,27 @@ class Client(Driver):
         self.logger.debug('Initializing!')
         self.system.init()
     def update(self,step):
-        if step>=self.delay and (step-self.delay)%self.sampling_rate==0:
+        if self.inputs and (step>=self.delay and (step-self.delay)%self.sampling_rate==0):
             self.logger.debug('Updating!')
             u = np.hstack([_.data.reshape(1,-1) for _  in self.inputs.values()])
             self.system.update(u)
-            self.logger.debug('u: %s',u)
+            self.logger.debug('u: %s',u.shape)
 
     def output(self,step):
         if step>=self.delay:
             a = 0
             b = 0
+            data = np.split( self.system.output().reshape(self.shape), **self.split)
             for k,v in self.outputs.items():
                 if (step-self.delay)%v.sampling_rate==0:
                     self.logger.debug('Outputing %s!',k)
+                    v.data[...] = data.pop(0).reshape(v.size)
+                    """
                     b = a + v.data.size
                     self.logger.debug('%s [%s]: [%d,%d]',k,v.size,a,b)
                     v.data[...] = self.system.output()[0,a:b].reshape(v.size)
                     a = b
+                    """
                     if v.logs is not None and (step-self.delay)%v.logs.decimation==0:
                         self.logger.debug('LOGGING')
                         v.logs.add(v.data.copy())
