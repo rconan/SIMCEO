@@ -640,6 +640,13 @@ The message that triggers the call to the \emph{Outputs} method is
                 doutputs[element] = self[element]
         else:
             #+self.sensor
+            try:
+                self.sensor.camera.readOut(self.sensor.camera.exposureTime,
+                                           self.sensor.camera.readOutNoiseRms,
+                                           self.sensor.camera.nBackgroundPhoton,
+                                           self.sensor.camera.noiseFactor)
+            except:
+                pass
             self.sensor.process()
             doutputs = OrderedDict()
             for element in outputs:
@@ -651,27 +658,20 @@ and the dictionnary implementation is
 <<SOpticalPath>>=
     def __getitem__(self,key):
         if key=="wfe_rms":
-            return self.src.wavefront.rms(units_exponent=-6).tolist()
+            return self.src.wavefront.rms()
         elif key=="segment_wfe_rms":
-            return self.src.phaseRms(where="segments",
-                                     units_exponent=-6).tolist()
+            return self.src.phaseRms(where="segments")
         elif key=="piston":
-            return self.src.piston(where="pupil",
-                                   units_exponent=-6).tolist()
+            return self.src.piston(where="pupil")
         elif key=="segment_piston":
-            return self.src.piston(where="segments",
-                                   units_exponent=-6).tolist()
+            return self.src.piston(where="segments")
         elif key=="tiptilt":
-            buf = self.src.wavefront.gradientAverage(1,self.src.rays.L)
-            buf *= ceo.constants.RAD2ARCSEC
-            return buf.tolist()
+            return self.src.wavefront.gradientAverage(1,self.src.rays.L)
         elif key=="segment_tiptilt":
-            buf = self.src.segmentsWavefrontGradient().T
-            buf *= ceo.constants.RAD2ARCSEC
-            return buf.tolist()
+            return self.src.segmentsWavefrontGradient().T
         elif key=="ee80":
             #print "EE80=%.3f or %.3f"%(self.sensor.ee80(from_ghost=False),self.sensor.ee80(from_ghost=True))
-            return self.sensor.ee80(from_ghost=False).tolist()
+            return self.sensor.ee80(from_ghost=False)
         elif key=="PSSn":
             if self.pssn_data is None:
                 pssn , self.pssn_data = self.gmt.PSSn(self.src,save=True)
@@ -684,7 +684,7 @@ and the dictionnary implementation is
             return getattr(self.sensor,key)
         else:
             c = self.comm_matrix[key].dot( self.sensor.Data ).ravel()
-            return c.tolist()
+            return c
 @
 \paragraph{InitializeConditions}
 
@@ -1278,9 +1278,11 @@ for k_d in self.drivers:
     try:
         with open(device+'.yaml') as f:
             prm = yaml.load(f)
-    except:
+    except FileNotFoundError:
         with open(device+'.pickle','rb') as f:
             prm = pickle.load(f)
+    except:
+        raise
     d.associate(prm)
 @
 The device parameter are formatted into messages that will be used to
