@@ -845,14 +845,14 @@ class SEdgeSensors(Sfunction):
         self.logger.setLevel(verbose)
         self.logger.info('Instantiate')
         self.gmt = gmt
-        self.es = ceo.DistanceEdgeSensors(self.gmt.M1)
 
     <<SEdgeSensor methods>>
 @
 \paragraph{Start}
 
 <<SEdgeSensor methods>>=
-def Start(self):
+def Start(self,**kwargs):
+    self.es = ceo.DistanceEdgeSensors(self.gmt.M1,**kwargs)
     self.comm_matrix = {}
     return "EdgeSensors"
 @
@@ -887,8 +887,12 @@ def Init(self,
 
     state0 = self.gmt.state
     self.gmt.reset()
-    self.es.calibration()
     (self.gmt)^=state0
+
+    error_1sig_per_m = self.es.error_1sig_per_m
+    self.es.error_1sig_per_m = 0.0
+    self.es.calibration()
+    self.es.error_1sig_per_m = error_1sig_per_m
 
     if filename is not None:
         filepath = os.path.join(SIMCEOPATH,"calibration_dbs",filename)
@@ -911,6 +915,8 @@ def Init(self,
             stroke = calibs['args']['stroke']
             state0 = self.gmt.state
             self.gmt.reset()
+            error_1sig_per_m = self.es.error_1sig_per_m
+            self.es.error_1sig_per_m = 0.0
             De = []
             for mirror in ['M1']:
                 for seg in range(7):
@@ -937,6 +943,7 @@ def Init(self,
             print('pseudo_inverse',pseudo_inverse)
             C = ceo.CalibrationVault([De],**pseudo_inverse)
             (self.gmt)^=state0
+            self.es.error_1sig_per_m = error_1sig_per_m
 
             if filename is not None:
                 self.logger.info("Saving command matrix to database %s!",filename)
@@ -1322,6 +1329,7 @@ def associate(self,prm):
         self.msg_args['Outputs']['outputs'] += [k_o for k_o in self.outputs]
     elif 'edge sensors' in prm:
         self.msg['class_id'] = 'EdgeSensors'
+        self.msg_args['Start'].update(prm['edge sensors'])
         self.msg_args['Init'].update(prm['interaction matrices'])
         self.msg_args['Outputs']['outputs'] += [k_o for k_o in self.outputs]
     elif 'source' in prm:
