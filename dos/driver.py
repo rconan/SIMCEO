@@ -209,6 +209,7 @@ class Server(Driver):
             self.msg_args['Outputs']['outputs'] += [k_o for k_o in self.outputs]
         elif 'edge sensors' in prm:
             self.msg['class_id'] = 'EdgeSensors'
+            self.msg_args['Start'].update(prm['edge sensors'])
             self.msg_args['Init'].update(prm['interaction matrices'])
             self.msg_args['Outputs']['outputs'] += [k_o for k_o in self.outputs]
         elif 'source' in prm:

@@ -83,9 +83,11 @@ class DOS(threading.Thread):
             try:
                 with open(device+'.yaml') as f:
                     prm = yaml.load(f)
-            except:
+            except FileNotFoundError:
                 with open(device+'.pickle','rb') as f:
                     prm = pickle.load(f)
+            except:
+                raise
             d.associate(prm)
         self.__start = map(lambda x: x.start(), self.drivers.values())
         self.__init = map(lambda x: x.init(), self.drivers.values())
