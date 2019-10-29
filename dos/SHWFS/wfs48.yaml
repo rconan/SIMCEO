@@ -6,16 +6,25 @@ source:
   azimuth:
     value: [0,120,240]
     units: degree
-  magnitude: [0,0,0]
+  magnitude: [14,14,14] # [0,0,0] #
   rays_box_size: 25.5000
   rays_box_sampling: 769 # N_SIDE_LENSLET*16+1 (16 pixel per lenslet)
   rays_origin: [0,0,25]
 sensor:
-  class: GeometricShackHartmann
+  class: ShackHartmann # GeometricShackHartmann # 
   args:
-    N_SIDE_LENSLET: 48 
+    N_SIDE_LENSLET: 48
+    N_PX_LENSLET: 16
     d: 0.53125 # [meter], rays_box_size/N_SIDE_LENSLET
+    DFT_osf: 2
+    N_PX_IMAGE: 24
+    BIN_IMAGE: 3
     N_GS: 3
+    readOutNoiseRms: 0.5 #0.5
+    noiseFactor: 1.4142
+    photoElectronGain: 0.63
+    exposureTime: 30 # 30
+    intensityThreshold: 0.0
   calibrate_args:
     threshold: 0.0  
 interaction matrices: 
@@ -32,20 +41,20 @@ interaction matrices:
     pseudo_inverse:
       n_threshold: [2,2,2,2,2,2,0]
       insert_zeros: [null,null,null,null,null,null,[5,10]]    
-    filename: AGWS_full_dec_0p5fluxTh
+    filename: SH_full_dec_0p5fluxTh # GeomSH_full_dec_0p5fluxTh
 COMMENTS:
   interaction matrices: 
     calibrations:
       M12_RBM:
         method_id: AGWS_calibrate
         args:
-          coupled: false
+          decoupled: true
           withM1: true
-          filterMirrorRotation: true
+          filterMirrorRotation: false
           stroke: [1.0e-6,1.0e-6,1.0e-6,1.0e-6,1.0e-6]
           fluxThreshold: 0.5
-          includeBM: false
+          includeBM: true
       pseudo_inverse:
         n_threshold: [2,2,2,2,2,2,0]
         insert_zeros: [null,null,null,null,null,null,[5,10]]
-      filename: AGWS_full_dec_0p5fluxTh
+      filename: SH_full_dec_0p5fluxTh # GeomSH_full_dec_0p5fluxTh

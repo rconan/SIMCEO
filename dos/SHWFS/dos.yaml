@@ -1,8 +1,8 @@
 simulation:
   sampling frequency: 1 # [Hertz]
-  duration: 50 # [seconds]
+  duration: 60 # [seconds]
   server:
-    IP: 34.222.243.173
+    IP: 34.220.17.136
 
 drivers:
   M1:
@@ -30,9 +30,7 @@ drivers:
     outputs:
       data:
         sampling_rate: 1 # [sample]
-        size: 13824
-#        logs:
-#          decimation: 1        
+        size: 13824     
       M12_RBM:
         sampling_rate: 1 # [sample]
         size: 406
