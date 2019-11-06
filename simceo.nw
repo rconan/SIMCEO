@@ -919,7 +919,7 @@ def Init(self,
             self.es.error_1sig_per_m = 0.0
             De = []
             for mirror in ['M1']:
-                for seg in range(7):
+                for seg in range(6):
                     print(seg,end='')
                     for mode in ['Txyz','Rxyz']:
                         print(mode,end='')
@@ -1723,10 +1723,13 @@ def output(self,step):
     if step>=self.delay:
         a = 0
         b = 0
-        data = np.split( self.system.output().reshape(self.shape), **self.split)
+        data = self.system.output().reshape(self.shape)
+        self.logger.debug('Output shape: %s', data.shape)
+        self.logger.debug('Splitting output: %s',self.split)
+        data = np.split( data , **self.split)
         for k,v in self.outputs.items():
             if (step-self.delay)%v.sampling_rate==0:
-                self.logger.debug('Outputing %s!',k)
+                self.logger.debug('Outputing %s [%s]!',k,data[0].shape)
                 v.data[...] = data.pop(0).reshape(v.size)
                 """
                 b = a + v.data.size
