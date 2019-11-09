@@ -2,7 +2,7 @@ simulation:
   sampling frequency: 1 # [Hertz]
   duration: 50 # [seconds]
   server:
-    IP: 34.212.245.73
+    IP:  54.188.155.214
 
 drivers:
   M1:
@@ -30,7 +30,9 @@ drivers:
     outputs:
       data:
         sampling_rate: 1 # [sample]
-        size: 13824   
+        size: 13824
+      #  logs:
+      #    decimation: 1   
       M12_RBM:
         sampling_rate: 1 # [sample]
         size: 406
@@ -49,12 +51,11 @@ drivers:
     sampling_rate: 1 # [sample]
     server: false
     inputs:
-#      SH-WFS:
-#        lien: [wfs48,M12_RBM]
       SH-WFS:
-        lien: [wfs48,data]
-      edge sensors:
-        lien: [M1_ES,deltas]
+        lien: [wfs48,M12_RBM]
+      #  lien: [wfs48,data]
+    #  edge sensors:
+    #    lien: [M1_ES,deltas]
     outputs:
       x_hat:
         size: 406 # 273
@@ -65,8 +66,8 @@ drivers:
     server: false
     inputs:
       x_hat:
-        lien: [wfs48,M12_RBM]
-#        lien: [ReconstructorM,x_hat]        
+#        lien: [wfs48,M12_RBM]
+        lien: [ReconstructorM,x_hat]        
     shape: [7, 58] #39]
     split:
       indices_or_sections: [3, 6, 9, 12]

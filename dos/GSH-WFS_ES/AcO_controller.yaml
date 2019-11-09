@@ -1,5 +1,5 @@
 System:
   sampling time: 1 # second
   parameters:
-    num: [-0.1]
+    num: [-0.25] # [-0.25]
     denom: [1,-1]

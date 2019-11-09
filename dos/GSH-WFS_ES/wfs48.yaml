@@ -6,13 +6,13 @@ source:
   azimuth:
     value: [0,120,240]
     units: degree
-  magnitude: [0,0,0] # [20,20,20] # [14,14,14] # 
+  magnitude: [0,0,0] # [14,14,14] #  [0,0,0] #
   fwhm: 3.16
   rays_box_size: 25.5000
   rays_box_sampling: 769 # N_SIDE_LENSLET*16+1 (16 pixel per lenslet)
   rays_origin: [0,0,25]
 sensor:
-  class: ShackHartmann # GeometricShackHartmann # ShackHartmann # 
+  class: GeometricShackHartmann # ShackHartmann # 
   args:
     N_SIDE_LENSLET: 48
     N_PX_LENSLET: 16
@@ -58,4 +58,4 @@ COMMENTS:
       pseudo_inverse:
         n_threshold: [2,2,2,2,2,2,0]
         insert_zeros: [null,null,null,null,null,null,[5,10]]
-      filename: GeomSH_full_dec_0p5fluxTh # SH_full_dec_0p5fluxTh # 
+      filename: SH_full_dec_0p5fluxTh # GeomSH_full_dec_0p5fluxTh #
