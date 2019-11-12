@@ -143,7 +143,7 @@ def plot_X0loadComp(m1_x0_dt, m2_x0_dt, controllerDT, show_delta, colors, marker
                 deltaBM[kseg,kmode,:] = deltaBM[kseg,kmode,:] + np.array(m1_x0_dt['state']['modes'])[kseg,kmode]
             else:
                 plt.plot(aux_plt, -np.array(m1_x0_dt['state']['modes'])[kseg,kmode],'-',
-                    color=colors[kseg], marker=markers[kmode])    
+                    color=colors[kseg])    
             plt.plot(deltaBM[kseg,kmode,:],'--', color=colors[kseg])
     plt.grid(True)
     plt.ylabel('u: M1 BM cmd')
