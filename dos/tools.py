@@ -28,24 +28,25 @@ def state_space_2_dos(A,B,C,D,dos_path):
     with open(dos_path+'.pickle', 'wb') as f:
         pickle.dump(sys,f)
 
-def get_SHWFS_D(Din, includeM1S7Rz_col=True):
+def get_SHWFS_D(Din, **kwargs):
     """ Compute a consolidated Shack-Hartmann interaction matrix from 
         segment-wise data. The output format is compatible with the
-        edge sensor pattern. If includeM1S7Rz_col is True (a column for 
-        M1-S7Rz is introduced) the number of M1&2 RBM is 83, otherwise
-        it is 82.
+        edge sensor pattern. The number of bending modes N-bm is an optional
+        input argument.
     """
     if len(Din) != 7:
         raise Exception('Interaction matrix is not partitioned segment-wise as expected!')
     
     # Number of bending modes
-    n_bm = Din[0].shape[1]-12
+    if 'n_bm' in kwargs.keys():
+        n_bm = kwargs['n_bm']
+    else:
+        n_bm = Din[0].shape[1]-12
+    
     # Number of M1/2-RBM DoF (M2 S7-Rz is not considered)
     n_M1RBM, n_M2RBM = 41, 41
     
-    #if(includeM1S7Rz_col):
-    #    n_M1RBM = 42
-
+    
     # Interaction matrix dimension: SH-WFS valid measurements x DoF
     n_sh, n_x = sum(Dseg.shape[0] for Dseg in Din), n_M1RBM + n_M2RBM + 7*n_bm
 
@@ -91,9 +92,9 @@ def merge_SH_ES_D(Dsh, De, alphaBM=1, alphaEs=1):
     return Da
 
 def build_TSVD_RecM(D, n_r=0, insM1M2S7Rz=True):
-    """ Build a reconstructor matrix (M) as a sort of pseudo-inverse 
-    of the interaction matrix (D). The procedure filters out the contribution
-    of the n_r weakest singular values.
+    """ Build a reconstructor matrix (M) as the truncated singular value 
+    decomposion (TSVD) a sort of the interaction matrix (D). The procedure 
+    filters out the contribution of the n_r weakest singular values.
     """
     U,sigma,V = np.linalg.svd(D, full_matrices=False)
     if(n_r):
@@ -110,24 +111,8 @@ def build_TSVD_RecM(D, n_r=0, insM1M2S7Rz=True):
 
     return M
 
-def build_CLS_RecM(Dsh, De, Pm2):
-    n_x = Dsh.shape[1]
-    n_constr = De.shape[0]+Pm2.shape[0]
-    DshTDsh = Dsh.T.dot(Dsh)
-    Gamma = np.hstack([ block_diag(De,Pm2), 
-                        np.zeros((n_constr,n_x-(De.shape[1]+Pm2.shape[1])))])
-    F = np.block([np.eye(n_x), np.zeros((n_x,n_constr))])
-    L = np.block([[DshTDsh, Gamma.T],
-                [Gamma, np.zeros((n_constr,n_constr))]])
-    iL = np.linalg.pinv(L) #,rcond=1e-8)
-    H = np.vstack([block_diag(Dsh.T,np.eye(De.shape[0])),
-            np.zeros((Pm2.shape[0],Dsh.shape[0]+De.shape[0]))])
-    M = F.dot(iL).dot(H)
 
-    return M
-
-
-def build_RLS_RecM(Dsh, De, P, rhoP, n_r, insM1M2S7Rz=True):
+def build_RLS_RecM(Dsh, De, n_r, insM1M2S7Rz=True):
     """ Function comments ...
     """
 
@@ -139,7 +124,7 @@ def build_RLS_RecM(Dsh, De, P, rhoP, n_r, insM1M2S7Rz=True):
     print('Regularization term coefficients:\n',q[-n_r:])
     Q = np.diag(q).dot(V)
 
-    A = Da.T.dot(Da) + np.dot(Q.T,Q) + rhoP*np.dot(P.T,P) #
+    A = Da.T.dot(Da) + np.dot(Q.T,Q)
 #    UA,sigmaA,VA = np.linalg.svd(A, full_matrices=False)
 #    left_inv_A = np.transpose(VA).dot(np.diag(1/sigmaA)).dot(np.transpose(UA))
     left_inv_A = np.linalg.pinv(A) #,rcond=1e-7)
@@ -150,13 +135,54 @@ def build_RLS_RecM(Dsh, De, P, rhoP, n_r, insM1M2S7Rz=True):
     
     return M
 
+
 def insert_M1M2_S7_Rz(M):
     # Introduce zero rows into M for M1M2-S7Rz for compatibility
     return np.vstack([M[:41,:], np.zeros((1,M.shape[1])),
                         M[41:82,:], np.zeros((1,M.shape[1])),
                         M[82:,:]])
 
-def gen_recM_4_SIMCEO(M, wfsMask):
+
+def build_AcO_Rec(fullD, **kwargs):
+
+    if not (len(fullD) == 7):
+        print('First argument must be a list of interaction matrix from each segment!')  
+    
+    if 'n_bm' in kwargs.keys():
+        n_bm = kwargs['n_bm']
+        
+    remBM = (fullD[0].shape[1]-12) - n_bm
+    if(remBM > 0):
+        D = [fullDseg[:,:-remBM] for fullDseg in fullD]
+        print('%d BMs used in the reconstructor computation.'%n_bm)
+    else:
+        D = fullD
+        n_bm = fullD[0].shape[1]-12
+        print('All %d calibrated BMs are considered in the reconstructor matrix.'%n_bm)
+    
+    UsVT = [np.linalg.svd(Dseg,full_matrices=False) for Dseg in D]            
+  
+    _n_threshold_ = [2,2,2,2,2,2,0]
+    zeroIdx = [None]*6 + [[5,10]]
+    M = block_diag(*[ aco_recon(X,Y,Z) for X,Y,Z in zip(UsVT, _n_threshold_, zeroIdx) ])
+    
+    if 'wfsMask' in kwargs.keys():
+        return gen_recM_4_SIMCEO(M, kwargs['wfsMask'], reorder2CEO=False)
+    else:
+        return M
+
+
+def aco_recon(_UsVT_, _n_threshold_, zeroIdx):
+    iS = 1./_UsVT_[1]
+    if _n_threshold_>0:
+        iS[-_n_threshold_:] = 0        
+    _M_ = np.dot(_UsVT_[2].T,np.dot(np.diag(iS),_UsVT_[0].T))
+    if zeroIdx is not None:
+        _M_ =  np.insert(_M_,zeroIdx,0,axis=0)
+    return _M_
+
+
+def gen_recM_4_SIMCEO(M, wfsMask, reorder2CEO=True):
     """ The function performs an input transformation on the recontructor 
     matrix (M) based on a mask (wfsMask), so that the output Msimceo is 
     compatible with raw output from the wfs48 SIMCEO driver. The flux threshold
@@ -184,17 +210,38 @@ def gen_recM_4_SIMCEO(M, wfsMask):
 
     RecM = sparse.hstack([sparse.lil_matrix(M[:,:n_sh]).dot(Mmask),
             sparse.lil_matrix(M[:,n_sh:])]).toarray()
-        
-    Msimceo = np.empty_like(RecM)
-    n_bm = (RecM.shape[0] - 84)//7
-    if((RecM.shape[0] - 84) % 7):
-        print('The number of bending modes retrieved from Dsh is not an integer.\n'
-         'Check the dimension of the reconstructor matrix!')   
 
-    for k in range (7):
-        row_sel = np.hstack([np.arange(6)+6*k,
-                             np.arange(42,48)+6*k,
-                             np.arange(84,84+n_bm)+n_bm*k])
-        Msimceo[len(row_sel)*k:len(row_sel)*(k+1),:] = RecM[row_sel,:]
+    if(reorder2CEO):
+        Msimceo = np.empty_like(RecM)
+        print('Reordering SIMCEO reconstructor matrix')
+        n_bm = (RecM.shape[0] - 84)//7
+        if((RecM.shape[0] - 84) % 7):
+            print('The number of bending modes retrieved from Dsh is not an integer.\n'
+            'Check the dimension of the reconstructor matrix!')   
 
-    return Msimceo
+        for k in range (7):
+            row_sel = np.hstack([np.arange(6)+6*k,
+                                np.arange(42,48)+6*k,
+                                np.arange(84,84+n_bm)+n_bm*k])
+            Msimceo[len(row_sel)*k:len(row_sel)*(k+1),:] = RecM[row_sel,:]
+        return Msimceo
+    else:
+        print('No reconstructor matrix row reordering!')
+        return RecM
+
+
+def build_CLS_RecM(Dsh, De, Pm2):
+    n_x = Dsh.shape[1]
+    n_constr = De.shape[0]+Pm2.shape[0]
+    DshTDsh = Dsh.T.dot(Dsh)
+    Gamma = np.hstack([ block_diag(De,Pm2), 
+                        np.zeros((n_constr,n_x-(De.shape[1]+Pm2.shape[1])))])
+    F = np.block([np.eye(n_x), np.zeros((n_x,n_constr))])
+    L = np.block([[DshTDsh, Gamma.T],
+                [Gamma, np.zeros((n_constr,n_constr))]])
+    iL = np.linalg.pinv(L) #,rcond=1e-8)
+    H = np.vstack([block_diag(Dsh.T,np.eye(De.shape[0])),
+            np.zeros((Pm2.shape[0],Dsh.shape[0]+De.shape[0]))])
+    M = F.dot(iL).dot(H)
+
+    return M

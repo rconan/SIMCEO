@@ -1,8 +1,8 @@
 simulation:
   sampling frequency: 1 # [Hertz]
-  duration: 50 # [seconds]
+  duration: 100 # [seconds]
   server:
-    IP: 54.202.147.203
+    IP: 34.221.25.225
 
 drivers:
   M1:

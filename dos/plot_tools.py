@@ -4,14 +4,17 @@ import matplotlib.pyplot as plt
 #from scipy import sparse
 #from scipy.linalg import block_diag
 
-def plot_science(scienceDT,m1EsDT):
+def plot_science(scienceDT, m1EsDT=[]):
     wfe_rms = scienceDT['wfe_rms'].timeSeries
     seg_wfe_rms = scienceDT['segment_wfe_rms'].timeSeries
     segpiston = scienceDT['segment_piston'].timeSeries
     tt = scienceDT['tiptilt'].timeSeries
     segtt = scienceDT['segment_tiptilt'].timeSeries
     pssn = scienceDT['PSSn'].timeSeries
-    ESdeltas = m1EsDT['deltas'].timeSeries
+    try:
+        ESdeltas = m1EsDT['deltas'].timeSeries
+    except:
+        print('')    
 
     print('Final values:\n WFE:',wfe_rms[1][-1]*1.0e9,
           '\n', seg_wfe_rms[1][-1,:]*1.0e9,
@@ -45,15 +48,18 @@ def plot_science(scienceDT,m1EsDT):
     plt.grid(True)
     plt.ylabel('Segment piston') 
 
-    plt.subplot(527)
-    plt.plot(segpiston[0],np.sum(np.abs(ESdeltas[1]),axis=1)*1.0e6,'x--')
-    plt.grid(True)
-    plt.ylabel('sum of abs ES deltas') 
+    try:
+        plt.subplot(527)
+        plt.plot(segpiston[0],np.sum(np.abs(ESdeltas[1]),axis=1)*1.0e6,'x--')
+        plt.grid(True)
+        plt.ylabel('sum of abs ES deltas') 
 
-    plt.subplot(528)
-    plt.plot(segpiston[0],ESdeltas[1],'x--')
-    plt.grid(True)
-    plt.ylabel('ES deltas') 
+        plt.subplot(528)
+        plt.plot(segpiston[0],ESdeltas[1],'x--')
+        plt.grid(True)
+        plt.ylabel('ES deltas') 
+    except:
+        print('')
 
     plt.subplot(529)
     plt.plot(tt[0],tt[1],'x--')
@@ -93,7 +99,7 @@ def plot_X0loadComp(m1_x0_dt, m2_x0_dt, controllerDT, show_delta, colors, marker
                     color=colors[kseg], marker=markers[kmode])    
             plt.plot(deltaM1Txyz[kseg,kmode,:]*Txyz_scale,'--', color=colors[kseg], marker=markers[kmode])
     plt.grid(True)
-    plt.ylabel('M1 Txyz')
+    plt.ylabel('M1 Txyz [um]')
     
     plt.subplot(222)
     for kmode in range(3):
@@ -119,7 +125,7 @@ def plot_X0loadComp(m1_x0_dt, m2_x0_dt, controllerDT, show_delta, colors, marker
                     color=colors[kseg], marker=markers[kmode])    
             plt.plot(deltaM2Txyz[kseg,kmode,:]*Txyz_scale,'--', color=colors[kseg], marker=markers[kmode])
     plt.grid(True)
-    plt.ylabel('M2 Txyz')
+    plt.ylabel('M2 Txyz [um]')
 
     plt.subplot(224)
     for kmode in range(3):
@@ -132,7 +138,7 @@ def plot_X0loadComp(m1_x0_dt, m2_x0_dt, controllerDT, show_delta, colors, marker
                     color=colors[kseg], marker=markers[kmode])    
             plt.plot(deltaM2Rxyz[kseg,kmode,:]/asec2rad,'--', color=colors[kseg], marker=markers[kmode])
     plt.grid(True)
-    plt.ylabel('M2 Rxyz [asec]]')
+    plt.ylabel('M2 Rxyz [asec]')
     plt.show()
 
     plt.figure(figsize=(16,5))
@@ -142,7 +148,7 @@ def plot_X0loadComp(m1_x0_dt, m2_x0_dt, controllerDT, show_delta, colors, marker
             if(show_delta):
                 deltaBM[kseg,kmode,:] = deltaBM[kseg,kmode,:] + np.array(m1_x0_dt['state']['modes'])[kseg,kmode]
             else:
-                plt.plot(aux_plt, -np.array(m1_x0_dt['state']['modes'])[kseg,kmode],'-',
+                plt.plot(aux_plt, -np.array(m1_x0_dt['state']['modes'])[kseg,kmode],'.',
                     color=colors[kseg])    
             plt.plot(deltaBM[kseg,kmode,:],'--', color=colors[kseg])
     plt.grid(True)
