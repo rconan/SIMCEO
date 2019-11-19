@@ -77,13 +77,18 @@ def merge_SH_ES_D(Dsh, De, alphaBM=1, alphaEs=1):
     if len(Dsh) == 7:
         Dsh = get_SHWFS_D(Dsh)
     # Number of M1&2 RBM (M1&M2 S7-Rz are not considered)
-    n_RBM = 41
+    n_M1_RBM, n_M2_RBM = 41, 41
+    if(De.shape[1] == 42):
+        # If ES interaction matrix is full, introduce a column for M1S7Rz into Dsh
+        Dsh = np.insert(Dsh,n_M1_RBM,0.0, axis=1)
+        n_M1_RBM = n_M1_RBM+1
+    
     # Merged interaction matrix
     Da = np.vstack([
-            # SH block
-            np.hstack([Dsh[:,:n_RBM],           # M1 RBM (wo S7 Rz)
-                Dsh[:,n_RBM:2*n_RBM],           # M2 RBM
-                alphaBM*Dsh[:,2*n_RBM:]]),      # M1 bending modes
+            # SH-WFS block
+            np.hstack([Dsh[:,:n_M1_RBM],           # M1 RBM (wo S7 Rz)
+                Dsh[:,n_M1_RBM:(n_M1_RBM+n_M2_RBM)],           # M2 RBM
+                alphaBM*Dsh[:,(n_M1_RBM+n_M2_RBM):]]),      # M1 bending modes
             # Edge sensor block    
             np.hstack([alphaEs*De, 
                 np.zeros((De.shape[0], Dsh.shape[1]-De.shape[1]))])
@@ -113,7 +118,9 @@ def build_TSVD_RecM(D, n_r=0, insM1M2S7Rz=True):
 
 
 def build_RLS_RecM(Dsh, De, n_r, insM1M2S7Rz=True):
-    """ Function comments ...
+    """ The function builds the active optics reconstructor from the
+    interaction matrices Dsh (Shack-Hartmann WFS) and De (M1 Edge sensors).
+    Th recontructor matrix is achieved using a regularized least-squares approach.
     """
 
     Da = merge_SH_ES_D(Dsh, De, alphaBM=1, alphaEs=1)
@@ -130,9 +137,12 @@ def build_RLS_RecM(Dsh, De, n_r, insM1M2S7Rz=True):
     left_inv_A = np.linalg.pinv(A) #,rcond=1e-7)
     M = left_inv_A.dot(Da.T)
 
-    if(insM1M2S7Rz):
+    if(insM1M2S7Rz) and (De.shape[1] < 42):
         M = insert_M1M2_S7_Rz(M)
-    
+    else:
+        M = np.vstack([ M[:83,:], np.zeros((1,M.shape[1])),
+                        M[83:,:]])
+
     return M
 
 
@@ -148,6 +158,7 @@ def build_AcO_Rec(fullD, **kwargs):
     if not (len(fullD) == 7):
         print('First argument must be a list of interaction matrix from each segment!')  
     
+    # Number of bending modes to be considered for the reconstruction
     if 'n_bm' in kwargs.keys():
         n_bm = kwargs['n_bm']
         
@@ -160,19 +171,31 @@ def build_AcO_Rec(fullD, **kwargs):
         n_bm = fullD[0].shape[1]-12
         print('All %d calibrated BMs are considered in the reconstructor matrix.'%n_bm)
     
-    UsVT = [np.linalg.svd(Dseg,full_matrices=False) for Dseg in D]            
-  
-    _n_threshold_ = [2,2,2,2,2,2,0]
+    # Get reconstruction algorithm
+    if 'rec_alg' in kwargs.keys():
+        rec_alg = kwargs['rec_alg']
+    else:
+        rec_alg = 'TSVD'
+
+    # Zeros to be inserted into the reconstruction matrix for M1/M2 S7Rz
     zeroIdx = [None]*6 + [[5,10]]
-    M = block_diag(*[ aco_recon(X,Y,Z) for X,Y,Z in zip(UsVT, _n_threshold_, zeroIdx) ])
-    
+    # Number of modes to be filtered
+    _n_threshold_ = [2,2,2,2,2,2,0]
+
+    if(rec_alg == 'TSVD'):
+        UsVT = [np.linalg.svd(Dseg,full_matrices=False) for Dseg in D]            
+        M = block_diag(*[ aco_tsvd(X,Y,Z) for X,Y,Z in zip(UsVT, _n_threshold_, zeroIdx) ])
+
+    elif(rec_alg == 'RLS'):
+        M = block_diag(*[ aco_rls(X,Y,Z) for X,Y,Z in zip(D, _n_threshold_, zeroIdx) ])
+
     if 'wfsMask' in kwargs.keys():
         return gen_recM_4_SIMCEO(M, kwargs['wfsMask'], reorder2CEO=False)
     else:
         return M
 
 
-def aco_recon(_UsVT_, _n_threshold_, zeroIdx):
+def aco_tsvd(_UsVT_, _n_threshold_, zeroIdx):
     iS = 1./_UsVT_[1]
     if _n_threshold_>0:
         iS[-_n_threshold_:] = 0        
@@ -180,6 +203,39 @@ def aco_recon(_UsVT_, _n_threshold_, zeroIdx):
     if zeroIdx is not None:
         _M_ =  np.insert(_M_,zeroIdx,0,axis=0)
     return _M_
+
+def aco_rls(Dseg, n_r, zeroIdx):
+    _U,sigma,V = np.linalg.svd(Dseg,full_matrices=False)
+    
+    if(n_r):
+        # Regularize poorly sensed modes (clocking)
+        w1 = 0.0*np.zeros_like(sigma)
+        w1[-n_r:] = 1.0
+        sqrtW1 = np.diag(w1).dot(V)
+    else:
+        sqrtW1 = np.eye(Dseg.shape[1])
+
+    # Weighting term based on DoF range
+    w_M1TxyzRxyz = np.diag(np.array([1,1,1,4,4,4])) #np.array([1,1,1,1,1,1])
+    w_M2TxyzRxyz = np.diag(np.array([50,40,40,8,8,8]))
+    try:
+        n_bm = Dseg.shape[1]-12+len(zeroIdx)
+        w_M1TxyzRxyz = w_M1TxyzRxyz[:-1,:-1]
+        w_M2TxyzRxyz = w_M2TxyzRxyz[:-1,:-1]
+    except:
+        n_bm = Dseg.shape[1]-12        
+    w_M1BM = 0.01*np.eye(n_bm)
+
+    W2 = block_diag(w_M1TxyzRxyz, w_M2TxyzRxyz, w_M1BM)
+    W2_coeff = 0.01/np.trace(W2)
+    print(W2_coeff)
+    # Solve RLS problem
+    pinvA = np.linalg.pinv(Dseg.T.dot(Dseg) + np.dot(sqrtW1.T,sqrtW1) + W2_coeff*W2)
+    Mseg = pinvA.dot(Dseg.T)
+
+    if zeroIdx is not None:
+        Mseg =  np.insert(Mseg, zeroIdx, 0, axis=0)
+    return Mseg
 
 
 def gen_recM_4_SIMCEO(M, wfsMask, reorder2CEO=True):
