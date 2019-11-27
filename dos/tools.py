@@ -184,27 +184,42 @@ def build_AcO_Rec(fullD, **kwargs):
 
     if(rec_alg == 'TSVD'):
         UsVT = [np.linalg.svd(Dseg,full_matrices=False) for Dseg in D]            
-        M = block_diag(*[ aco_tsvd(X,Y,Z) for X,Y,Z in zip(UsVT, _n_threshold_, zeroIdx) ])
+        M = block_diag(*[ aco_tsvd(X,Y,Z) for X,Y,Z in zip(UsVT,_n_threshold_,zeroIdx) ])
 
     elif(rec_alg == 'RLS'):
-        M = block_diag(*[ aco_rls(X,Y,Z) for X,Y,Z in zip(D, _n_threshold_, zeroIdx) ])
+        if 'W2' not in kwargs.keys():
+            # Weighting term based on DoF range
+            w_M1TxyzRxyz = np.diag(np.array([1,1,1,4,4,4]))
+            w_M2TxyzRxyz = np.diag(np.array([50,40,40,8,8,8]))          
+            w_M1BM = 0.01*np.eye(n_bm)
+            W2 = block_diag(w_M1TxyzRxyz, w_M2TxyzRxyz, w_M1BM)
+
+            W2_coeff = 1/np.trace(W2)
+            W2 = W2_coeff*W2
+            print('Weighting factor of W2:',W2_coeff)
+        else:
+            W2 = kwargs['W2']
+        M_mixed = [ aco_rls(X,W2,Y,Z) for X,Y,Z in zip(D,_n_threshold_,zeroIdx) ]
+        M1 = block_diag(*[Mseg_mixed[:,:Dseg.shape[0]] for (Mseg_mixed,Dseg) in zip(M_mixed,D)])
+        M2 = block_diag(*[Mseg_mixed[:,Dseg.shape[0]:] for (Mseg_mixed,Dseg) in zip(M_mixed,D)]) 
+        M = np.hstack([M1, M2])
 
     if 'wfsMask' in kwargs.keys():
         return gen_recM_4_SIMCEO(M, kwargs['wfsMask'], reorder2CEO=False)
     else:
         return M
 
-
 def aco_tsvd(_UsVT_, _n_threshold_, zeroIdx):
     iS = 1./_UsVT_[1]
     if _n_threshold_>0:
         iS[-_n_threshold_:] = 0        
+
     _M_ = np.dot(_UsVT_[2].T,np.dot(np.diag(iS),_UsVT_[0].T))
     if zeroIdx is not None:
         _M_ =  np.insert(_M_,zeroIdx,0,axis=0)
     return _M_
 
-def aco_rls(Dseg, n_r, zeroIdx):
+def aco_rls(Dseg, W2, n_r, zeroIdx):
     _U,sigma,V = np.linalg.svd(Dseg,full_matrices=False)
     
     if(n_r):
@@ -215,26 +230,24 @@ def aco_rls(Dseg, n_r, zeroIdx):
     else:
         sqrtW1 = np.eye(Dseg.shape[1])
 
-    # Weighting term based on DoF range
-    w_M1TxyzRxyz = np.diag(np.array([1,1,1,4,4,4])) #np.array([1,1,1,1,1,1])
-    w_M2TxyzRxyz = np.diag(np.array([50,40,40,8,8,8]))
-    try:
-        n_bm = Dseg.shape[1]-12+len(zeroIdx)
-        w_M1TxyzRxyz = w_M1TxyzRxyz[:-1,:-1]
-        w_M2TxyzRxyz = w_M2TxyzRxyz[:-1,:-1]
-    except:
-        n_bm = Dseg.shape[1]-12        
-    w_M1BM = 0.01*np.eye(n_bm)
-
-    W2 = block_diag(w_M1TxyzRxyz, w_M2TxyzRxyz, w_M1BM)
-    W2_coeff = 0.01/np.trace(W2)
-    print(W2_coeff)
+    if zeroIdx is not None:
+        # Remove weights relative to M1 and M2 S7-Rz
+        W2_ = np.delete(W2,[6,12],0)
+        W2_ = np.delete(W2_,[6,12],1)
+    else:
+        W2_ = W2
+    
     # Solve RLS problem
-    pinvA = np.linalg.pinv(Dseg.T.dot(Dseg) + np.dot(sqrtW1.T,sqrtW1) + W2_coeff*W2)
-    Mseg = pinvA.dot(Dseg.T)
+    pinvA = np.linalg.pinv(Dseg.T.dot(Dseg) + np.dot(sqrtW1.T,sqrtW1) + W2_)
+    Mseg = pinvA.dot( np.hstack([Dseg.T, W2_]) )
+    
 
     if zeroIdx is not None:
         Mseg =  np.insert(Mseg, zeroIdx, 0, axis=0)
+        
+        Mseg = np.insert(Mseg, Dseg.shape[0]+6, 0, axis=1)
+        Mseg = np.insert(Mseg, Dseg.shape[0]+12, 0, axis=1)
+
     return Mseg
 
 
@@ -250,7 +263,7 @@ def gen_recM_4_SIMCEO(M, wfsMask, reorder2CEO=True):
 
     # Adjust wfs mask data dimension
     for k in range (7):
-        wfsMask[k] = np.reshape(wfsMask[k],wfsMask[k].shape[0]*wfsMask[k].shape[1],1)
+        wfsMask[k] = wfsMask[k].ravel()#np.reshape(wfsMask[k],wfsMask[k].shape[0]*wfsMask[k].shape[1],1)
 
     # SH-WFS valid meas dimension
     n_sh = sum(np.count_nonzero(segMask) for segMask in wfsMask)
@@ -285,7 +298,7 @@ def gen_recM_4_SIMCEO(M, wfsMask, reorder2CEO=True):
         print('No reconstructor matrix row reordering!')
         return RecM
 
-
+# Algorithm conceived by R.Conan Nov 1st, 2019
 def build_CLS_RecM(Dsh, De, Pm2):
     n_x = Dsh.shape[1]
     n_constr = De.shape[0]+Pm2.shape[0]

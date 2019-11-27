@@ -1083,6 +1083,8 @@ A [[dos]] simulation is defined with a parameter file [[dos.yaml]].
 <<dos drivers section>>
 <<init.py>>=
 from . import mpc_driver
+from . import sh_aco_driver
+from . import sh_aco_debug_driver
 from . import control
 from . import driver
 from . import tools
@@ -1751,6 +1753,8 @@ from . import control
 <<control.py>>=
 <<control imports>>
 from .mpc_driver import MPC
+from .sh_aco_driver import SHAcO
+from .sh_aco_debug_driver import SHAcO_debug
 from .MountController import Mount
 from .source import Source
 import numpy as np
