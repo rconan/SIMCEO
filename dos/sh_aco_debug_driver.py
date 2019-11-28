@@ -8,7 +8,7 @@ logging.basicConfig()
 #import yaml
 
 class SHAcO_debug:
-    def __init__(self,D,W2,n_bm,wfsMask,A,B,Q,R,npred,dumin,dumax,umin,umax,verbose=logging.INFO,**kwargs):
+    def __init__(self,D,W2,n_bm,wfsMask,A,B,verbose=logging.INFO,**kwargs):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(verbose)
 
@@ -21,7 +21,6 @@ class SHAcO_debug:
 
         self.__u = np.zeros(0)
         self.__xpast = np.zeros(0)
-        self.npred = npred
 
         self.logger.debug('Initializing!')
 
@@ -45,9 +44,8 @@ class SHAcO_debug:
         J1 = np.linalg.norm(y_valid - self.D.dot(x))**2
         delta = x-self.__u
         J3 = delta.T.dot(np.kron(np.eye(7),self.W2)).dot(delta)
-        if not (J3 > 0):
-            J3 = 1
-        print('d>:',J1,J3,J1/J3)
+        if(J3):
+            print('-> J1:%0.8f, J3:%0.8f, ratio:%0.8f' %(J1,J3,J1/J3))
 
         # Update controller output
         self.__u = self.__u -0.15*x

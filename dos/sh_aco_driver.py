@@ -132,6 +132,8 @@ class SHAcO:
             'c':c, 'IncConstr':mpcIncConstr, 'AbsConstr':mpcAbsConstr,
         }
 
+        self.umin, self.umax = umin, umax
+
 
     def init(self):
         self.__u = np.zeros(self.nu)
@@ -149,17 +151,18 @@ class SHAcO:
         J1 = np.linalg.norm(y_valid - self.D.dot(c_hat))**2
         delta = c_hat-self.__u
         J3 = delta.T.dot(np.kron(np.eye(7),self.W2)).dot(delta)
-        if not (J3):
-        #    J3=1
-        #    self.W2=(J1/(40*J3))*self.W2
-        #    self.M = tools.build_AcO_Rec(self.Dpart,n_bm=self.n_bm,
-        #        W2=self.W2, rec_alg='RLS',wfsMask=self.wfsMask)
-        #    x = self.M.dot(y)
-        #
-        #    J1 = np.linalg.norm(y_valid - self.D.dot(x))**2
-        #    delta = x-self.__u
-        #    J3 = delta.T.dot(np.kron(np.eye(7),self.W2)).dot(delta)
-            print('->',J1,J3,J1/J3)
+
+        if (J3):
+            #print('-> J1:%0.3f, J3:%0.3f, ratio:%0.3f' %(J1,J3,J1/J3))
+            self.W2=(J1/(10*J3))*self.W2
+            self.M = tools.build_AcO_Rec(self.Dpart,n_bm=self.n_bm,
+                W2=self.W2, rec_alg='RLS',wfsMask=self.wfsMask)
+            x = self.M.dot(y)
+        
+            J1 = np.linalg.norm(y_valid - self.D.dot(x))**2
+            delta = x-self.__u
+            J3 = delta.T.dot(np.kron(np.eye(7),self.W2)).dot(delta)
+            print('+> J1:%0.8f, J3:%0.8f, ratio:%0.8f' %(J1,J3,J1/J3))
 
 
         # AcO control using MPC algorithm
@@ -202,7 +205,7 @@ class SHAcO:
         self.__u = self.__u + U.x[:self.nu]
     
         # Integral controller (For debug only)
-        #self.__u = self.__u -0.15*x
+        #self.__u = self.__u -0.15*c_hat
         #self.__u = np.clip(self.__u, a_min = self.umin, a_max = self.umax)
         # Update past state
         self.__xpast = c_hat 

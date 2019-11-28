@@ -154,6 +154,10 @@ def insert_M1M2_S7_Rz(M):
 
 
 def build_AcO_Rec(fullD, **kwargs):
+    """Given segment-wise interaction matrices the function returns the AcO 
+    reconstructor. If the optional argument wfsMask is used, the output is compatible
+    with the 'data' output of wfs48 driver. Otherwise, the valid slopes are the inputs
+    of the computed reconstruction matrix."""
 
     if not (len(fullD) == 7):
         print('First argument must be a list of interaction matrix from each segment!')  
@@ -241,15 +245,13 @@ def aco_rls(Dseg, W2, n_r, zeroIdx):
     pinvA = np.linalg.pinv(Dseg.T.dot(Dseg) + np.dot(sqrtW1.T,sqrtW1) + W2_)
     Mseg = pinvA.dot( np.hstack([Dseg.T, W2_]) )
     
-
     if zeroIdx is not None:
-        Mseg =  np.insert(Mseg, zeroIdx, 0, axis=0)
-        
+        Mseg = np.insert(Mseg, zeroIdx, 0, axis=0)     
         Mseg = np.insert(Mseg, Dseg.shape[0]+6, 0, axis=1)
         Mseg = np.insert(Mseg, Dseg.shape[0]+12, 0, axis=1)
 
     return Mseg
-
+    
 
 def gen_recM_4_SIMCEO(M, wfsMask, reorder2CEO=True):
     """ The function performs an input transformation on the recontructor 
@@ -297,6 +299,9 @@ def gen_recM_4_SIMCEO(M, wfsMask, reorder2CEO=True):
     else:
         print('No reconstructor matrix row reordering!')
         return RecM
+
+
+
 
 # Algorithm conceived by R.Conan Nov 1st, 2019
 def build_CLS_RecM(Dsh, De, Pm2):
