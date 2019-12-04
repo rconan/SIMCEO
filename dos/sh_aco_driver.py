@@ -8,7 +8,7 @@ logging.basicConfig()
 #import yaml
 
 class SHAcO:
-    def __init__(self,D,W2,n_bm,wfsMask,A,B,Q,R,npred,dumin,dumax,umin,umax,verbose=logging.INFO,**kwargs):
+    def __init__(self,D,W2,n_bm,wfsMask,A,B,Q,R,npred,umin,umax,verbose=logging.INFO,**kwargs):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(verbose)
 
@@ -18,10 +18,17 @@ class SHAcO:
         self.D = block_diag(*[Dseg[:,:12+n_bm] for Dseg in D])
         self.W2, self.n_bm, self.wfsMask = W2, n_bm, wfsMask
 
+        self.npred = npred
+        self.umin = umin
+        self.umax = umax
+        try:
+            self._Tu = kwargs['_Tu']
+        except:
+            self._Tu = np.eye(B.shape[1])
+
         self.__u = np.zeros(0)
         self.__xpast = np.zeros(0)
-        self.npred = npred
-
+        
         self.logger.debug('Initializing!')
 
         if self.logger.getEffectiveLevel() > 20:
@@ -70,18 +77,7 @@ class SHAcO:
         Gamma = sparse.csc_matrix(Gamma)
         P = sparse.csc_matrix((Gamma.T.dot(Qkron).dot(Gamma)) + Rkron)
 
-        # Constraint matrices
-        # Test if there are incremental bound constraints
-        if(empty(dumin) and not empty (dumax)):
-            dumin = -np.inf*np.ones(self.nu)
-        elif (not empty(dumin) and empty (dumax)):
-            dumax = np.inf*np.ones(self.nu)
-        Dumin = np.kron(np.ones(self.npred),dumin)
-        Dumax = np.kron(np.ones(self.npred),dumax)
-        if (empty(dumin) and empty (dumax)):
-            mpcIncConstr = False
-        else:
-            mpcIncConstr = True
+        # Inequality constraint matrices
 
         # Test if there are absolute bound constraints
         if(empty(umin) and not empty (umax)):
@@ -90,49 +86,33 @@ class SHAcO:
             umax = np.inf*np.ones(self.nu)
         Umin = np.kron(np.ones(self.npred),umin)
         Umax = np.kron(np.ones(self.npred),umax)
+
         if (empty(umin) and empty (umax)):
             mpcAbsConstr = False
             c = np.array([])
+            Ain = sparse.csc_matrix(np.eye(self.nu*self.npred))
+            print('No constraints introduced to the MPC')
         else:
             mpcAbsConstr = True
-            S = np.kron(np.tril(np.ones(self.npred)),np.eye(self.nu))
-            c = np.kron(np.ones((self.npred,1)), np.eye(self.nu))
-        # Create inequality constraint matrix Ain: lb <= Ain*u <= ub
-        if mpcIncConstr and mpcAbsConstr:
-            Ain = sparse.csc_matrix(np.concatenate(
-                (np.eye(self.nu*self.npred),S), axis=0))
-            print('Incremental and absolute constraints introduced to MPC')
-        elif not mpcIncConstr and mpcAbsConstr:
-            Ain = sparse.csc_matrix(S)
-            print('Absolute constraints introduced to MPC')
-        elif mpcIncConstr and not mpcAbsConstr:
-            Ain = sparse.csc_matrix(np.eye(self.nu*self.npred))
-            print('Incremental constraints introduced to MPC')
-        
+            Ain = sparse.csc_matrix(np.kron(np.tril(np.ones(self.npred)),self._Tu))
+            c = np.kron(np.ones((npred,1)), self._Tu)
+            # Create inequality constraint matrix Ain: lb <= Ain*u <= ub
+            print('Absolute constraints introduced to the MPC')
+             
         # Create an OSQP object as global
         self.qpp = osqp.OSQP()
         # Setup QP problem
-        if mpcIncConstr or mpcAbsConstr:
-            self.qpp.setup(P=P, q=np.zeros(self.npred*self.nu), A=Ain,
-                l=np.zeros(Ain.shape[0]), u=np.zeros(Ain.shape[0]), 
-                eps_abs = 1.0e-10, eps_rel = 1.0e-10,
-                verbose=verboseFlag, warm_start=True)
-        else:
-            self.qpp.setup(P=P, q=np.zeros(self.npred*self.nu),
-                A=sparse.csc_matrix(np.eye(self.nu*self.npred)),
-                l=-np.inf*np.ones(self.nu*self.npred),
-                u=np.inf*np.ones(self.nu*self.npred),
-                eps_abs = 1.0e-10, eps_rel = 1.0e-10,
-                verbose=verboseFlag, warm_start=True)
+        self.qpp.setup(P=P, q=np.zeros(self.npred*self.nu), A=Ain,
+            l=-np.inf*np.ones(Ain.shape[0]),
+            u=np.inf*np.ones(Ain.shape[0]),
+            eps_abs = 1.0e-9, eps_rel = 1.0e-9, max_iter = 1000,
+            verbose=verboseFlag, warm_start=True)
 
         # MPC-QP data matrices
         self.mpc_qpdt = {
             'Phi':Phi, 'GammaT':Gamma.T, 'Qkron':Qkron,
-            'Dumin':Dumin, 'Dumax':Dumax, 'Umin':Umin, 'Umax':Umax,
-            'c':c, 'IncConstr':mpcIncConstr, 'AbsConstr':mpcAbsConstr,
+            'Umin':Umin, 'Umax':Umax, 'c':c, 'AbsConstr':mpcAbsConstr,
         }
-
-        self.umin, self.umax = umin, umax
 
 
     def init(self):
@@ -154,7 +134,7 @@ class SHAcO:
 
         if (J3):
             #print('-> J1:%0.3f, J3:%0.3f, ratio:%0.3f' %(J1,J3,J1/J3))
-            self.W2=(J1/(10*J3))*self.W2
+            self.W2 = (J1/(10*J3))*self.W2
             self.M = tools.build_AcO_Rec(self.Dpart,n_bm=self.n_bm,
                 W2=self.W2, rec_alg='RLS',wfsMask=self.wfsMask)
             x = self.M.dot(y)
@@ -164,7 +144,6 @@ class SHAcO:
             J3 = delta.T.dot(np.kron(np.eye(7),self.W2)).dot(delta)
             print('+> J1:%0.8f, J3:%0.8f, ratio:%0.8f' %(J1,J3,J1/J3))
 
-
         # AcO control using MPC algorithm
 
         # State feedback - update MPC internal variables         
@@ -172,35 +151,25 @@ class SHAcO:
         # QP linear term - demands state feedback    
         q = np.dot(self.GammaTQkron, np.dot(self.mpc_qpdt['Phi'],xa))
 
-        # QP input constraints
-        if(self.mpc_qpdt['IncConstr'] and self.mpc_qpdt['AbsConstr']):
-            lb = np.concatenate((self.mpc_qpdt['Dumin'],
-                self.mpc_qpdt['Umin']-self.mpc_qpdt['c'].dot(self.__u)), axis=0)
-            ub = np.concatenate((self.mpc_qpdt['Dumax'],
-                self.mpc_qpdt['Umax']-self.mpc_qpdt['c'].dot(self.__u)), axis=0)
-        elif(not self.mpc_qpdt['IncConstr'] and self.mpc_qpdt['AbsConstr']):
+        # Update QP variables
+        if(self.mpc_qpdt['AbsConstr']):
+            # QP input constraints
             lb = self.mpc_qpdt['Umin']-self.mpc_qpdt['c'].dot(self.__u)
             ub = self.mpc_qpdt['Umax']-self.mpc_qpdt['c'].dot(self.__u)
-        elif(self.mpc_qpdt['IncConstr'] and not self.mpc_qpdt['AbsConstr']):
-            lb = self.mpc_qpdt['Dumin']
-            ub = self.mpc_qpdt['Dumax']
-        else:
-            pass
-        # Update QP variables
-        if self.mpc_qpdt['IncConstr'] or self.mpc_qpdt['AbsConstr']:
             self.qpp.update(q=q, l=lb, u=ub)
         else:
             self.qpp.update(q=q)
+            
         # Solve QP
         U = self.qpp.solve() 
-        if self.mpc_qpdt['IncConstr'] or self.mpc_qpdt['AbsConstr']:
-            if any((U.x[:self.nu]<lb[:self.nu])|(U.x[:self.nu]>ub[:self.nu])):
-                print('Constraint violation, check tolerance settings!')
+        if self.mpc_qpdt['AbsConstr']:
+            if any((U.x[:self.nu]<0.98*lb[:self.nu])|(U.x[:self.nu]>1.02*ub[:self.nu])):
+                self.logger.warning('Constraint violation, check tolerance settings!')
 
         # Check solver status
         if U.info.status != 'solved':
             print(U.info.status)
-            self.logger.error('Infeasible QP problem!!!')    
+            self.logger.warning('Infeasible QP problem!!!')    
         # Update controller output
         self.__u = self.__u + U.x[:self.nu]
     
