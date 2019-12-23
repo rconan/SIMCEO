@@ -1,7 +1,7 @@
 simulation:
   sampling frequency: 1
-  duration: 35
-  server: {IP: 34.219.190.168}
+  duration: 50
+  server: {IP: 54.202.37.246}
 
 drivers:
   M1:
@@ -69,17 +69,49 @@ drivers:
         lien: [M1, modes]
         logs: {decimation: 1}
 
-  SHAcO_debug:
-    server: false
-    sampling_rate: 1 # [sample]
-    inputs:
-      wfs48 data:
-        lien: [wfs48,data]
-    outputs:
-      x_hat:
-        sampling_rate: 1 # [sample]
-        size: 273
-        logs: {decimation: 1}
+  # AcO_controller:
+  #   server: false
+  #   sampling_rate: 1 # [sample]
+  #   inputs:
+  #     x_hat:
+  #       lien: [wfs48, M12_RBM]
+  #   shape: [7, 39]
+  #   split:
+  #     indices_or_sections: [3, 6, 9, 12]
+  #     axis: 1
+  #   outputs:
+  #     M1 Txyz:
+  #       sampling_rate: 1
+  #       lien: [M1, Txyz]
+  #       logs: {decimation: 1}
+  #     M1 Rxyz:
+  #       sampling_rate: 1
+  #       lien: [M1, Rxyz]
+  #       logs: {decimation: 1}
+  #     M2 Txyz:
+  #       sampling_rate: 1
+  #       lien: [M2, Txyz]
+  #       logs: {decimation: 1}
+  #     M2 Rxyz:
+  #       sampling_rate: 1
+  #       lien: [M2, Rxyz]
+  #       logs: {decimation: 1}
+  #     M1 BM:
+  #       sampling_rate: 1
+  #       lien: [M1, modes]
+  #       logs: {decimation: 1}      
+
+#  SHAcO_debug:
+#    server: false
+#    sampling_rate: 1 # [sample]
+#    inputs:
+#      wfs48 data:
+#        lien: [wfs48,data]
+#    outputs:
+#      x_hat:
+#        sampling_rate: 1 # [sample]
+#        size: 273
+#        logs: {decimation: 1}
 
   science:
     outputs:

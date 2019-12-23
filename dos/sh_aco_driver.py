@@ -5,36 +5,43 @@ from scipy.linalg import block_diag
 import osqp     # OSQP solver
 import logging
 logging.basicConfig()
+import os.path
 #import yaml
 
 class SHAcO:
-    def __init__(self,D,W2,n_bm,wfsMask,A,B,Q,R,npred,umin,umax,verbose=logging.INFO,**kwargs):
+    def __init__(self,D,n_bm,W2,W3,K,rho_2,rho_3,wfsMask,A,B,Q,R,npred,umin,umax,**kwargs):
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.setLevel(verbose)
 
-        self.M = tools.build_AcO_Rec(D,n_bm=n_bm, W2=W2, rec_alg='RLS',#TSVD
-                                  wfsMask=wfsMask)
-        self.Dpart = D                          
-        self.D = block_diag(*[Dseg[:,:12+n_bm] for Dseg in D])
-        self.W2, self.n_bm, self.wfsMask = W2, n_bm, wfsMask
+        #self.M = tools.build_AcO_Rec(D,n_bm=n_bm, W3=W3, rec_alg='RLS', wfsMask=wfsMask)
+        #self.Dpart = D                          
+        
+        self.D = D
+        self.DwS7Rz = np.insert(D,[((12+n_bm)*6)+5,((12+n_bm)*6)+10],0,axis=1)
+        self.M = tools.build_RLS_RecM(D, W2, W3, K, rho_2, rho_3, insM1M2S7Rz=True)
+        #self.M = tools.build_TSVD_RecM(D, n_r=12, insM1M2S7Rz=True)
+
+        self.W2, self.W3, self.k = W2, W3, K
+        self.rho_2, self.rho_3 = rho_2, rho_3 
+        self.n_bm, self.wfsMask = n_bm, wfsMask
 
         self.npred = npred
         self.umin = umin
         self.umax = umax
+
         try:
             self._Tu = kwargs['_Tu']
         except:
             self._Tu = np.eye(B.shape[1])
+            
+        if 'J1_J3_ratio' in kwargs.keys():
+            self.J1_J3_ratio = kwargs['J1_J3_ratio']
+        else:
+            self.J1_J3_ratio = 10
 
         self.__u = np.zeros(0)
         self.__xpast = np.zeros(0)
         
         self.logger.debug('Initializing!')
-
-        if self.logger.getEffectiveLevel() > 20:
-            verboseFlag = True #Verbose mode just from INFO level (or beyond)
-        else:
-            verboseFlag = False
 
         # Plant model dimensions
         C = np.eye(A.shape[0])
@@ -87,7 +94,7 @@ class SHAcO:
         Umin = np.kron(np.ones(self.npred),umin)
         Umax = np.kron(np.ones(self.npred),umax)
 
-        if (empty(umin) and empty (umax)):
+        if (empty(umin) and empty(umax)):
             mpcAbsConstr = False
             c = np.array([])
             Ain = sparse.csc_matrix(np.eye(self.nu*self.npred))
@@ -105,8 +112,8 @@ class SHAcO:
         self.qpp.setup(P=P, q=np.zeros(self.npred*self.nu), A=Ain,
             l=-np.inf*np.ones(Ain.shape[0]),
             u=np.inf*np.ones(Ain.shape[0]),
-            eps_abs = 1.0e-9, eps_rel = 1.0e-9, max_iter = 1000,
-            verbose=verboseFlag, warm_start=True)
+            eps_abs = 1.0e-9, eps_rel = 1.0e-9, max_iter = 50*self.nu,
+            verbose=False, warm_start=True)
 
         # MPC-QP data matrices
         self.mpc_qpdt = {
@@ -114,68 +121,100 @@ class SHAcO:
             'Umin':Umin, 'Umax':Umax, 'c':c, 'AbsConstr':mpcAbsConstr,
         }
 
-
     def init(self):
         self.__u = np.zeros(self.nu)
         self.__xpast = np.zeros(self.nx)
         self.GammaTQkron = self.mpc_qpdt['GammaT'].dot(self.mpc_qpdt['Qkron']).toarray()
+        self.MPC_flag = False
+        if not (self.MPC_flag):
+            self.invTu = np.linalg.pinv(self._Tu)
 
     def update(self,y_sh):
 
         # AcO state reconstructor
         y_sh = y_sh.ravel()
-        y = np.concatenate((y_sh,self.__u), axis=0)
-        c_hat = self.M.dot(y)
-
-        y_valid = np.hstack([*[y_sh[MaskSeg] for MaskSeg in self.wfsMask]])
-        J1 = np.linalg.norm(y_valid - self.D.dot(c_hat))**2
-        delta = c_hat-self.__u
-        J3 = delta.T.dot(np.kron(np.eye(7),self.W2)).dot(delta)
-
-        if (J3):
-            #print('-> J1:%0.3f, J3:%0.3f, ratio:%0.3f' %(J1,J3,J1/J3))
-            self.W2 = (J1/(10*J3))*self.W2
-            self.M = tools.build_AcO_Rec(self.Dpart,n_bm=self.n_bm,
-                W2=self.W2, rec_alg='RLS',wfsMask=self.wfsMask)
-            x = self.M.dot(y)
+        y_valid = np.hstack([*[y_sh[MaskSeg.ravel()] for MaskSeg in self.wfsMask]])
         
-            J1 = np.linalg.norm(y_valid - self.D.dot(x))**2
-            delta = x-self.__u
-            J3 = delta.T.dot(np.kron(np.eye(7),self.W2)).dot(delta)
-            print('+> J1:%0.8f, J3:%0.8f, ratio:%0.8f' %(J1,J3,J1/J3))
-
-        # AcO control using MPC algorithm
-
-        # State feedback - update MPC internal variables         
-        xa = np.hstack([c_hat-self.__xpast, self.__xpast])
-        # QP linear term - demands state feedback    
-        q = np.dot(self.GammaTQkron, np.dot(self.mpc_qpdt['Phi'],xa))
-
-        # Update QP variables
-        if(self.mpc_qpdt['AbsConstr']):
-            # QP input constraints
-            lb = self.mpc_qpdt['Umin']-self.mpc_qpdt['c'].dot(self.__u)
-            ub = self.mpc_qpdt['Umax']-self.mpc_qpdt['c'].dot(self.__u)
-            self.qpp.update(q=q, l=lb, u=ub)
+        if(self.M.shape[1] == self.D.shape[0]):
+            y = y_valid
+            c_hat = self.M.dot(y)
+            J3 = 0
         else:
-            self.qpp.update(q=q)
+            y = np.concatenate((y_valid,self.__u), axis=0)
+            c_hat = self.M.dot(y)
             
-        # Solve QP
-        U = self.qpp.solve() 
-        if self.mpc_qpdt['AbsConstr']:
-            if any((U.x[:self.nu]<0.98*lb[:self.nu])|(U.x[:self.nu]>1.02*ub[:self.nu])):
-                self.logger.warning('Constraint violation, check tolerance settings!')
+            epsilon = y_valid - self.DwS7Rz.dot(c_hat)
+            J1 = epsilon.T.dot(epsilon)
+            delta = self.k*c_hat - self.__u
+            delta = np.delete(delta,list(map(lambda x:x+(12+self.n_bm)*6, [6,12])),0)
+            J3 = delta.T.dot(self.W3).dot(delta)
 
-        # Check solver status
-        if U.info.status != 'solved':
-            print(U.info.status)
-            self.logger.warning('Infeasible QP problem!!!')    
-        # Update controller output
-        self.__u = self.__u + U.x[:self.nu]
-    
-        # Integral controller (For debug only)
-        #self.__u = self.__u -0.15*c_hat
-        #self.__u = np.clip(self.__u, a_min = self.umin, a_max = self.umax)
+        # J3 is zero if delta is also zero...
+        if(J3):
+            if(self.rho_3):
+                norm_s = np.linalg.norm(y_valid)
+                print('-> J1:%0.3g, J3:%0.3g, ratio:%0.3g, ||s||:%0.3g' %(J1,J3,J1/(self.rho_3*J3),norm_s**2))
+            else:
+                print('-> J1:%0.3g, J3:%0.3g, ratio:%0.3g, rho_3:-X-' %(J1,J3,J1/J3))
+
+            # Update J3 weight
+            self.rho_3 = (J1/(self.J1_J3_ratio*J3))             
+            
+            self.M = tools.build_RLS_RecM(self.D, self.W2, self.W3, self.k,
+                        self.rho_2, self.rho_3, insM1M2S7Rz=True)
+            c_hat = self.M.dot(y)
+        
+            epsilon = y_valid - self.DwS7Rz.dot(c_hat)
+            J1 = epsilon.T.dot(epsilon)
+            #c_hatwoRz = np.delete(c_hat, list(map(lambda x:x+(12+self.n_bm)*6, [6,12])),0)
+            delta = self.k*c_hat - self.__u
+            delta = np.delete(delta, list(map(lambda x:x+(12+self.n_bm)*6, [6,12])),0)
+            J3 = delta.T.dot(self.W3).dot(delta)
+            print('+> J1:%0.3g J1/(rho_3*J3):%0.3g\n' %(J1,J1/(self.rho_3*J3)))
+
+        if(self.MPC_flag):
+            # AcO control using MPC algorithm
+
+            # State feedback - update MPC internal variables         
+            xa = np.hstack([c_hat-self.__xpast, self.__xpast])
+            # QP linear term - demands state feedback    
+            q = np.dot(self.GammaTQkron, np.dot(self.mpc_qpdt['Phi'],xa))
+
+            # Update QP variables
+            if(self.mpc_qpdt['AbsConstr']):
+                # QP input constraints
+                lb = self.mpc_qpdt['Umin']-self.mpc_qpdt['c'].dot(self.__u)
+                ub = self.mpc_qpdt['Umax']-self.mpc_qpdt['c'].dot(self.__u)
+                self.qpp.update(q=q, l=lb, u=ub)
+            else:
+                self.qpp.update(q=q)
+                
+            # Solve QP
+            U = self.qpp.solve() 
+            if self.mpc_qpdt['AbsConstr']:
+                if(any(U.x[:self.nu]<0.98*lb[:self.nu]) or any(U.x[:self.nu]>1.02*ub[:self.nu])):
+                    self.logger.warning('Constraint violation, check tolerance settings!')
+
+            # Check solver status
+            if U.info.status != 'solved':
+                print(U.info.status)
+                self.logger.warning('Infeasible QP problem!!!')    
+            # Update controller output
+            self.__u = self.__u + U.x[:self.nu]
+        else:
+            # Integral controller
+            self.__u = self.__u -self.k*c_hat
+
+            if not (empty(self.umin) and empty(self.umax)):
+                clip_iter, clip_tol = 0, 1.02
+                while (clip_iter<30) and (
+                            any(self._Tu.dot(self.__u) > clip_tol*self.umax) or 
+                            any(self._Tu.dot(self.__u) < clip_tol*self.umin)):
+                    clip_iter = clip_iter + 1        
+                    self.__u = self.invTu.dot(np.clip(self._Tu.dot(self.__u), self.umin, self.umax))
+                if(clip_iter):    
+                    print('Number of clipping iterations:%d'%clip_iter)
+
         # Update past state
         self.__xpast = c_hat 
         self.logger.debug('u: %s',self.__u)

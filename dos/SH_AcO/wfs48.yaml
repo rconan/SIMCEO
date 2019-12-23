@@ -6,7 +6,7 @@ source:
   azimuth:
     value: [0, 120, 240]
     units: degree
-  magnitude: [0, 0, 0]
+  magnitude: [20, 20, 20]
   fwhm: 3.16
   rays_box_size: 25.5
   rays_box_sampling: 769
@@ -14,7 +14,7 @@ source:
 sensor:
   class: ShackHartmann
   args: {N_SIDE_LENSLET: 48, N_PX_LENSLET: 16, d: 0.53125, DFT_osf: 2, N_PX_IMAGE: 24,
-    BIN_IMAGE: 3, N_GS: 3, readOutNoiseRms: 0.0, noiseFactor: 1.4142, photoElectronGain: 0.63,
+    BIN_IMAGE: 3, N_GS: 3, readOutNoiseRms: 0.5, noiseFactor: 1.4142, photoElectronGain: 0.63,
     exposureTime: 30, intensityThreshold: 0.0}
   calibrate_args: {threshold: 0.0}
 interaction matrices:
