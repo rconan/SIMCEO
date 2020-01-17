@@ -2,7 +2,8 @@ from scipy import signal
 import pickle
 from .mpc_driver import MPC
 from .sh_aco_driver import SHAcO
-from .sh_aco_debug_driver import SHAcO_debug
+from .sh_aco_qp_driver import SHAcO_qp
+#from .sh_aco_debug_driver import SHAcO_debug
 from .MountController import Mount
 from .source import Source
 import numpy as np

@@ -8,7 +8,21 @@ asec2rad = 4.84814e-6
 Txyz_scale = 1.0e6 # micro meters
 Rxyz_scale = 1.0e3 # m rad
 
-def plot_science(scienceDT, m1EsDT=[]):
+def plot_science(scienceDT, **kwargs):
+
+    if 'k0' in kwargs.keys():
+        k0 = kwargs['k0']
+    else:
+        k0 = 0
+    if 'n_w' in kwargs.keys():
+        n_w = kwargs['n_w']
+    else:
+        n_w = scienceDT['wfe_rms'].timeSeries[0].shape[0]
+    if 'm1EsDT' in kwargs.keys():
+        m1EsDT = kwargs['m1EsDT']
+    else:
+        m1EsDT = [] 
+
     wfe_rms = scienceDT['wfe_rms'].timeSeries
     seg_wfe_rms = scienceDT['segment_wfe_rms'].timeSeries
     segpiston = scienceDT['segment_piston'].timeSeries
@@ -26,83 +40,100 @@ def plot_science(scienceDT, m1EsDT=[]):
           '\nsum of abs seg piston (um):',np.sum(np.abs(segpiston[1][-1]))*1.0e6,
           '\n', segpiston[1][-1,:]*1.0e6)
 
-    plt.figure(figsize=(18,6))
-    plt.subplot(321)
-    plt.plot(wfe_rms[0],wfe_rms[1]*1.0e9,'x--')
-    plt.grid(True)
-    plt.ylabel('WFE RMS (nm)')
+    fig_1 = plt.figure(figsize=(12,6))
+    #ax1 = plt.subplot(321)
+    ax1 = plt.subplot2grid((3, 2), (0, 0))
+    ax1.plot(wfe_rms[0][k0:k0+n_w],wfe_rms[1][k0:k0+n_w]*1.0e9,'x--')
+    ax1.grid(True)
+    ax1.set_ylabel('WFE RMS (nm)')
 
-    plt.subplot(322)
-    plt.plot(wfe_rms[0],seg_wfe_rms[1]*1.0e9,'x--')
-    plt.grid(True)
-    plt.ylabel('WFE RMS (nm)')
+    #ax2 = plt.subplot(322)
+    ax2 = plt.subplot2grid((3, 2), (0, 1), rowspan=2)
+    ax2.plot(wfe_rms[0][k0:k0+n_w],seg_wfe_rms[1][k0:k0+n_w,:]*1.0e9,'x--')
+    ax2.grid(True)
+    ax2.set_ylabel('Segment WFE RMS (nm)')
 
-    plt.subplot(323)
-    plt.plot(pssn[0],pssn[1],'x--')
-    plt.grid(True)
-    plt.ylabel('PSSn')
+    ax3 = plt.subplot2grid((3, 2), (1, 0))
+    ax3.plot(pssn[0][k0:k0+n_w],pssn[1][k0:k0+n_w],'x--')
+    ax3.grid(True)
+    ax3.set_ylabel('PSSn')
 
-    plt.subplot(325)
-    plt.plot(segpiston[0],np.sum(np.abs(segpiston[1]),axis=1)*1.0e6,'x--')
-    plt.grid(True)
-    plt.ylabel('sum of abs Seg piston (um)')
+    ax4 = plt.subplot2grid((3, 2), (2, 0))
+    ax4.plot(segpiston[0][k0:k0+n_w],np.sum(np.abs(segpiston[1]),axis=1)[k0:k0+n_w]*1.0e6,'x--')
+    ax4.grid(True)
+    ax4.set_ylabel('sum of abs Seg piston (um)')
+    ax4.set_xlabel('AcO iteration')
 
-    plt.subplot(326)
-    plt.plot(segpiston[0],segpiston[1]*1.0e6,'x--')
-    plt.grid(True)
-    plt.ylabel('Segment piston (um)') 
+    ax5 = plt.subplot2grid((3, 2), (2, 1))
+    ax5.plot(segpiston[0][k0:k0+n_w],segpiston[1][k0:k0+n_w,:]*1.0e6,'x--')
+    ax5.grid(True)
+    ax5.set_ylabel('Segment piston (um)')
+    ax5.set_xlabel('AcO iteration')
 
     try:
         ESdeltas[0].shape
-        plt.figure(figsize=(18,2))
+        plt.figure(figsize=(12,2))
         plt.subplot(221)
-        plt.plot(segpiston[0],np.sum(np.abs(ESdeltas[1]),axis=1)*1.0e6,'x--')
+        plt.plot(segpiston[0][k0:k0+n_w],np.sum(np.abs(ESdeltas[1]),axis=1)[k0:k0+n_w]*1.0e6,'x--')
         plt.grid(True)
         plt.ylabel('sum of abs ES deltas') 
 
         plt.subplot(222)
-        plt.plot(segpiston[0],ESdeltas[1],'x--')
+        plt.plot(segpiston[0][k0:k0+n_w],ESdeltas[1][k0:k0+n_w,:],'x--')
         plt.grid(True)
         plt.ylabel('ES deltas')
     except:
         pass
 
-    plt.figure(figsize=(18,2))
+    fig_tt = plt.figure(figsize=(12,2))
     plt.subplot(121)
-    plt.plot(tt[0],tt[1],'x--')
+    plt.plot(tt[0][k0:k0+n_w],tt[1][k0:k0+n_w,:],'x--')
     plt.grid(True)
-    plt.ylabel('TT') 
+    plt.ylabel('TT')
+    plt.xlabel('AcO iteration')
 
     plt.subplot(122)
-    plt.plot(segtt[0],segtt[1][:,:7],'x--')
-    plt.plot(segtt[0],segtt[1][:,7:],'+--')
+    plt.plot(segtt[0][k0:k0+n_w],segtt[1][k0:k0+n_w,:7],'x--')
+    plt.plot(segtt[0][k0:k0+n_w],segtt[1][k0:k0+n_w,7:],'+--')
     plt.grid(True)
     plt.ylabel('Seg TT')
+    plt.xlabel('AcO iteration')
+
+    return fig_1, fig_tt
 
 
+def plot_X0loadComp(m1_x0_dt, m2_x0_dt, controllerDT, show_delta, colors, markers, **kwargs):
+    if 'k0' in kwargs.keys():
+        k0 = kwargs['k0']
+    else:
+        k0 = 0 
 
-def plot_X0loadComp(m1_x0_dt, m2_x0_dt, controllerDT, show_delta, colors, markers):
-    rm_samples = 0
     M1Txyz, M1Rxyz, M2Txyz, M2Rxyz, M1BM = {}, {}, {}, {}, {}
     M1Txyz_ = controllerDT['M1 Txyz'].timeSeries
-    M1Txyz[0] = np.delete(M1Txyz_[0],np.arange(rm_samples))
-    M1Txyz[1] = np.delete(M1Txyz_[1],np.arange(rm_samples),axis=2)
+
+    if 'n_w' in kwargs.keys():
+        n_w = kwargs['n_w']
+    else:
+        n_w = controllerDT['M1 Txyz'].timeSeries[0].shape[0] 
+
+    M1Txyz[0] = M1Txyz_[0][k0:k0+n_w]
+    M1Txyz[1] = M1Txyz_[1][:,:,k0:k0+n_w]
     M1Rxyz_ = controllerDT['M1 Rxyz'].timeSeries
-    M1Rxyz[1] = np.delete(M1Rxyz_[1],np.arange(rm_samples),axis=2)
+    M1Rxyz[1] = M1Rxyz_[1][:,:,k0:k0+n_w]
     M2Txyz_ = controllerDT['M2 Txyz'].timeSeries
-    M2Txyz[1] = np.delete(M2Txyz_[1],np.arange(rm_samples),axis=2)
+    M2Txyz[1] = M2Txyz_[1][:,:,k0:k0+n_w]
     M2Rxyz_ = controllerDT['M2 Rxyz'].timeSeries
-    M2Rxyz[1] = np.delete(M2Rxyz_[1],np.arange(rm_samples),axis=2)
+    M2Rxyz[1] = M2Rxyz_[1][:,:,k0:k0+n_w]
     M1BM_ = controllerDT['M1 BM'].timeSeries
-    M1BM[1] = np.delete(M1BM_[1],np.arange(rm_samples),axis=2)
+    M1BM[1] = M1BM_[1][:,:,k0:k0+n_w]
 
     deltaM1Txyz, deltaM1Rxyz = 1.0*np.zeros_like(M1Txyz[1]), 1.0*np.zeros_like(M1Rxyz[1])
     deltaM2Txyz, deltaM2Rxyz = 1.0*np.zeros_like(M2Txyz[1]), 1.0*np.zeros_like(M2Rxyz[1])
     deltaBM = 1.0*np.zeros_like(M1BM[1])
 
-    aux_plt = M1Txyz[0][-1] + 4
+    aux_plt = M1Txyz[0][-1] + 3
     
-    plt.figure(figsize=(16,8))
+    fig_rbm = plt.figure(figsize=(12,6))
     plt.subplot(221)
     for kmode in range(3):
         for kseg in range(7):            
@@ -112,7 +143,7 @@ def plot_X0loadComp(m1_x0_dt, m2_x0_dt, controllerDT, show_delta, colors, marker
             else:
                 plt.plot(aux_plt, -np.array(m1_x0_dt['state']['Txyz'])[kseg,kmode]*Txyz_scale,'-',
                     color=colors[kseg], marker=markers[kmode])    
-            plt.plot(deltaM1Txyz[kseg,kmode,:]*Txyz_scale,'--', color=colors[kseg], marker=markers[kmode])
+            plt.plot(M1Txyz[0],deltaM1Txyz[kseg,kmode,:]*Txyz_scale,'--', color=colors[kseg], marker=markers[kmode])
     plt.grid(True)
     plt.ylabel('M1 Txyz [um]')
     
@@ -126,7 +157,7 @@ def plot_X0loadComp(m1_x0_dt, m2_x0_dt, controllerDT, show_delta, colors, marker
                 plt.plot(aux_plt, -np.array(m1_x0_dt['state']['Rxyz'])[kseg,kmode]*Rxyz_scale,'-',
                     color=colors[kseg], marker=markers[kmode])
             if(not kseg == 6) or (not kmode == 2):
-                plt.plot(deltaM1Rxyz[kseg,kmode,:]*Rxyz_scale,'--', color=colors[kseg], marker=markers[kmode])
+                plt.plot(M1Txyz[0],deltaM1Rxyz[kseg,kmode,:]*Rxyz_scale,'--', color=colors[kseg], marker=markers[kmode])
     plt.grid(True)
     plt.ylabel('M1 Rxyz [mrad]')
 
@@ -139,9 +170,10 @@ def plot_X0loadComp(m1_x0_dt, m2_x0_dt, controllerDT, show_delta, colors, marker
             else:
                 plt.plot(aux_plt, -np.array(m2_x0_dt['state']['Txyz'])[kseg,kmode]*Txyz_scale,'-',
                     color=colors[kseg], marker=markers[kmode])    
-            plt.plot(deltaM2Txyz[kseg,kmode,:]*Txyz_scale,'--', color=colors[kseg], marker=markers[kmode])
+            plt.plot(M1Txyz[0],deltaM2Txyz[kseg,kmode,:]*Txyz_scale,'--', color=colors[kseg], marker=markers[kmode])
     plt.grid(True)
     plt.ylabel('M2 Txyz [um]')
+    plt.xlabel('AcO iteration')
 
     plt.subplot(224)
     for kmode in range(3):
@@ -153,12 +185,13 @@ def plot_X0loadComp(m1_x0_dt, m2_x0_dt, controllerDT, show_delta, colors, marker
                 plt.plot(aux_plt, -np.array(m2_x0_dt['state']['Rxyz'])[kseg,kmode]*Rxyz_scale,'-',
                     color=colors[kseg], marker=markers[kmode])
             if(not kseg == 6) or (not kmode == 2):    
-                plt.plot(deltaM2Rxyz[kseg,kmode,:]*Rxyz_scale,'--', color=colors[kseg], marker=markers[kmode])
+                plt.plot(M1Txyz[0],deltaM2Rxyz[kseg,kmode,:]*Rxyz_scale,'--', color=colors[kseg], marker=markers[kmode])
     plt.grid(True)
     plt.ylabel('M2 Rxyz [mrad]')
+    plt.xlabel('AcO iteration')
     plt.show()
 
-    plt.figure(figsize=(16,4))
+    fig_bm = plt.figure(figsize=(12,2))
     for kmode in range(len(M1BM[1][0,:,0])):
         for kseg in range(7):
             deltaBM[kseg,kmode,:] = M1BM[1][kseg,kmode,:]
@@ -170,6 +203,9 @@ def plot_X0loadComp(m1_x0_dt, m2_x0_dt, controllerDT, show_delta, colors, marker
             plt.plot(deltaBM[kseg,kmode,:],'.--', color=colors[kseg])
     plt.grid(True)
     plt.ylabel('u: M1 BM cmd')
+    plt.xlabel('AcO iteration')
+
+    return fig_rbm, fig_bm
 
 
 def plot_states(X_timeseries, n_bm, colors, markers):
