@@ -6,7 +6,7 @@ source:
   azimuth:
     value: [0, 120, 240]
     units: degree
-  magnitude: [0, 0, 0]
+  magnitude: [16, 16, 16]
   fwhm: 3.16
   rays_box_size: 25.5
   rays_box_sampling: 769
