@@ -9,27 +9,34 @@ import os.path
 #import yaml
 
 class SHAcO_qp:
-    def __init__(self,D,n_bm,W2,W3,K,rho_2,rho_3,wfsMask,umin,umax,**kwargs):
+    def __init__(self,D,W2,W3,K,wfsMask,umin,umax,**kwargs):
         self.logger = logging.getLogger(self.__class__.__name__)                        
         
-        if 'Rs' in kwargs.keys():
-            self.rem_mean_slopes = True
-            WRs = kwargs['Rs'].T.dot(kwargs['Rs'])
-            self.DT_WRs_D = D.T.dot(WRs).dot(D)
-            self.WRsT_D = WRs.T.dot(D)
+        self.mount_included = False
+        if not ((D.shape[1]+2) % 7):
+            n_bm = ((D.shape[1]+2)//7) - 12
+        elif not ((D.shape[1]+2 -2) % 7):
+            n_bm = ((D.shape[1])//7) - 12
+            self.mount_included = True
         else:
-            self.rem_mean_slopes = False
-            self.DT_D = D.T.dot(D)
-            self.D = D
+            self.logger.error('Unable to get the correct number of bending modes. Check Dsh!')
 
-        self.W2, self.W3, self.k = W2, W3, K
-        self.rho_2, self.rho_3 = rho_2, rho_3 
-        self.n_bm, self.wfsMask = n_bm, wfsMask
+        # W1 can be used to remove mean slopes
+        if 'W1' in kwargs.keys():
+            self.W1 = kwargs['W1']
+        else:
+            self.W1 = np.eye(D.shape[0])
+        self.DT_W1_D = D.T.dot(self.W1).dot(D)
+        self.W1_D = self.W1.dot(D)
+
+        # It is assumed that W3 incorporates the Tu transformation effect
+        self.W2, self.W3, self.rho3, self.k = W2, W3, 1e-3, K
+        self.wfsMask = wfsMask
 
         self.umin = umin
         self.umax = umax
 
-        self.n_c_oa = (12+self.n_bm)*6
+        self.n_c_oa = (12+n_bm)*6
         self.DwS7Rz = np.insert(D,[self.n_c_oa+5,self.n_c_oa+10],0,axis=1)
 
         try:
@@ -43,17 +50,14 @@ class SHAcO_qp:
             self.J1_J3_ratio = 10
 
         self.__u = np.zeros(0)
-        
-        self.logger.debug('Initializing!')
+        self.logger.debug(' * * * Initializing! * * * ')
 
         # Reconstructor dimensions
         self.nc = D.shape[1]
 
         # QP reconstructor matrices
-        if(self.rem_mean_slopes):
-            P = sparse.csc_matrix(self.DT_WRs_D+ self.rho_2*self.W2+ self.rho_3*(self.k**2)*self.W3)
-        else:
-            P = sparse.csc_matrix(self.DT_D+ self.rho_2*self.W2+ self.rho_3*(self.k**2)*self.W3)
+        P = sparse.csc_matrix(self.DT_W1_D+ self.W2+ self.rho3*(self.k**2)*self.W3)
+        
         # Inequality constraint matrix: lb <= Ain*u <= ub
         self.Ain = sparse.csc_matrix(   # Remove S7Rz from _Tu
             -np.delete(self._Tu,[self.n_c_oa+5,self.n_c_oa+11], axis=1)*self.k) 
@@ -63,7 +67,7 @@ class SHAcO_qp:
         # Setup QP problem
         self.qpp.setup(P=P, q=np.zeros(self.nc), A=self.Ain,
             l=-np.inf*np.ones(self.Ain.shape[0]),u=np.inf*np.ones(self.Ain.shape[0]),
-            eps_abs = 1.0e-8, eps_rel = 1.0e-12, max_iter = 500*self.nc,
+            eps_abs = 1.0e-8, eps_rel = 1.0e-6, max_iter = 500*self.nc,
             verbose=False, warm_start=True)
 
 
@@ -73,82 +77,72 @@ class SHAcO_qp:
 
 
     def update(self,y_sh):
-
         # AcO state reconstructor
         y_sh = y_sh.ravel()
         y_valid = np.hstack([*[y_sh[MaskSeg.ravel()] for MaskSeg in self.wfsMask]])
-
+        # Remove S7-Rz
         u_ant = np.delete(self.__u,[self.n_c_oa+5,self.n_c_oa+11])
         # Update linear QP term
-        if(self.rem_mean_slopes):
-            q = -y_valid.T.dot(self.WRsT_D) - self.rho_3* u_ant.T.dot(self.W3)*self.k
-        else:
-            q = -y_valid.T.dot(self.D) - self.rho_3* u_ant.T.dot(self.W3)*self.k
+        q = -y_valid.T.dot(self.W1_D) - self.rho3*u_ant.T.dot(self.W3)*self.k
+        
         # Update bounds to inequality constraints
         _Tu_u_ant = self._Tu.dot(self.__u)
         lb = self.umin -_Tu_u_ant
         ub = self.umax -_Tu_u_ant
-        # Update QP object
+        # Update QP object and solve problem - 1st step
         self.qpp.update(q=q, l=lb, u=ub)
-
-        # Check solver status
         X = self.qpp.solve()
+        # Check solver status
         if X.info.status == 'solved':
             # Insert zeros for M1/2S7-Rz
             c_hat = np.insert(X.x[:self.nc],[self.n_c_oa+5,self.n_c_oa+10],0)
         else:
-            print(X.info.status)
+            self.logger.info('QP info: %s', X.info.status)
             self.logger.warning('Infeasible QP problem!!!')
             c_hat = np.zeros_like(self.__u)
         
         epsilon = y_valid - self.DwS7Rz.dot(c_hat)
-        J1 = epsilon.T.dot(epsilon)
+        J1 = epsilon.T.dot(self.W1).dot(epsilon)
         delta = np.delete(self.k*c_hat - self.__u,[self.n_c_oa+5,self.n_c_oa+11])
         J3 = delta.T.dot(self.W3).dot(delta)
 
-        # J3 is zero if delta is also zero...
+        # J3 is zero if delta is also zero -> no need for the 2nd step
         if(J3):
-            if(self.rho_3):                
+            if(self.rho3):                
                 norm_s = np.linalg.norm(y_valid)
-                print('-> J1:%0.3g, J3:%0.3g, ratio:%0.3g, ||s||:%0.3g' %(J1,J3,J1/(self.rho_3*J3),norm_s**2))
+                self.logger.info('1st-> J1:%0.3g, J3:%0.3g, ratio:%0.3g, ||s||:%0.3g' %(J1,J3,J1/(self.rho3*J3),norm_s**2))
             else:
-                print('-> J1:%0.3g, J3:%0.3g, ratio:%0.3g, rho_3:-X-' %(J1,J3,J1/J3))
+                self.logger.info('1st-> J1:%0.3g, J3:%0.3g, ratio:%0.3g, rho3:-X-' %(J1,J3,J1/J3))
 
             # Update J3 weight
-            self.rho_3 = max((J1/(self.J1_J3_ratio*J3)),1.0e-6)
-            if(self.rem_mean_slopes):
-                P = sparse.csc_matrix(self.DT_WRs_D+ self.rho_2*self.W2+ self.rho_3*(self.k**2)*self.W3)
-                q = -y_valid.T.dot(self.WRsT_D) - self.rho_3* u_ant.T.dot(self.W3)*self.k
-            else:
-                P = sparse.csc_matrix(self.DT_D+ self.rho_2*self.W2+ self.rho_3*(self.k**2)*self.W3)
-                q = -y_valid.T.dot(self.D) - self.rho_3* u_ant.T.dot(self.W3)*self.k
+            self.rho3 = max((J1/(self.J1_J3_ratio*J3)),1.0e-6)
+            # Update QP object and solve problem - 2nd step
+            P = sparse.csc_matrix(self.DT_W1_D+ self.W2+ self.rho3*(self.k**2)*self.W3)
+            q = -y_valid.T.dot(self.W1_D) - self.rho3*u_ant.T.dot(self.W3)*self.k
             self.qpp.update(q=q)
             self.qpp.update(Px=sparse.triu(P).data)
-
-            # Check solver status
+            # Solve QP - 2nd Step
             X = self.qpp.solve()
+            # Check solver status            
             if X.info.status != 'solved':
-                print(X.info.status)
+                self.logger.warning('QP info: %s', X.info.status)
                 self.logger.warning('Infeasible QP problem!!!')
         
             # Insert zeros for M1/2S7-Rz
             c_hat = np.insert(X.x[:self.nc],[self.n_c_oa+5,self.n_c_oa+10],0)
 
             epsilon = y_valid - self.DwS7Rz.dot(c_hat)
-            J1 = epsilon.T.dot(epsilon)
+            J1 = epsilon.T.dot(self.W1).dot(epsilon)
             delta = np.delete(self.k*c_hat - self.__u,[self.n_c_oa+5,self.n_c_oa+11])
             J3 = delta.T.dot(self.W3).dot(delta)
-
-            if(self.rho_3):                
-                norm_s = np.linalg.norm(y_valid)
-                print('+> J1:%0.3g, J3:%0.3g, ratio:%0.3g, rho_3:%0.3g' %(J1,J3,J1/(self.rho_3*J3),self.rho_3))
-            else:
-                print('+> J1:%0.3g, J3:%0.3g, ratio:%0.3g, rho_3:%0.3g' %(J1,J3,J1/J3,self.rho_3))
             
+            self.logger.info('2nd> J1:%0.3g, J3:%0.3g, ratio:%0.3g, rho3:%0.3g' %(J1,J3,J1/(self.rho3*J3),self.rho3))
+            
+
         # Integral controller
         self.__u = self.__u -self.k*c_hat
 
-        # Clip the control signal to the saturation limits [umin,umax]
+        # Clip the control signal to the saturation limits [umin,umax] - Should not be necessary if using QP
         if not (empty(self.umin) and empty(self.umax)):
             clip_iter, clip_tol = 0, 1.1
             while (clip_iter<0) and (
@@ -157,13 +151,17 @@ class SHAcO_qp:
                 clip_iter = clip_iter + 1        
                 self.__u = self.invTu.dot(np.clip(self._Tu.dot(self.__u), self.umin, self.umax))
             # Warn clipping iterations required    
-            if(clip_iter):    
-                print('Number of clipping iterations:%d'%clip_iter)
+            if(clip_iter):
+                self.logger.warning('Number of clipping iterations: %d',clip_iter)
 
         self.logger.debug('u: %s',self.__u)
 
     def output(self):
-        return np.atleast_2d(self.__u)
+        if not self.mount_included:
+            return np.atleast_2d(self.__u)
+        else:
+            self.logger.info('u_mount: %s',self.__u[-2:])
+            return np.atleast_2d(self.__u[:-2])
 
 # Function used to test empty constraint vectors
 def empty(value):
