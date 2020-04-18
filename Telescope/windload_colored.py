@@ -176,7 +176,8 @@ class WindLoad:
                       'GIR','C-Ring',
                       'M1','M2'],
               inputs_version=0,
-              M2type='PDR'):
+              M2type='PDR',
+              time_range=[]):
         self.logger.info('Start')
 
         self.state['fs'] = fs
@@ -184,22 +185,35 @@ class WindLoad:
         if not (len(groups)==1 and 'M1TransientWind' in groups):
 
             self.logger.info('Loading CFD forces and moments from {0} @ {1}'.format(cfd_case,s3path))
-            time_switch = 1800
-            case_id = cfd_case.split('_')[1]
-            if case_id in list('123')+['17','18','19']:
-                time_switch = 4000
-            elif case_id in ['13','14']:
-                time_switch = 1400
-            elif case_id in ['16']:
-                time_switch = 2200
-            df = pd.read_csv('{0}/{1}/FORCES.txt'.format(s3path,cfd_case))
-            df.rename(index=str,
-                          columns={'Force Truss Top  2  y Monitor: Force (N)':
-                                   'Force Truss Top 2  y Monitor: Force (N)'},
-                          inplace=True)
-            forces = df[df['Physical Time: Physical Time (s)']>=time_switch]
-            df = pd.read_csv('{0}/{1}/MOMENTS.txt'.format(s3path,cfd_case))
-            moments = df[df['Physical Time: Physical Time (s)']>=time_switch]
+
+            if time_range:
+                df = pd.read_csv('{0}/{1}/FORCES.txt'.format(s3path,cfd_case))
+                df.rename(index=str,
+                              columns={'Force Truss Top  2  y Monitor: Force (N)':
+                                       'Force Truss Top 2  y Monitor: Force (N)'},
+                              inplace=True)
+                forces = df[df['Physical Time: Physical Time (s)'].between(*time_range)]
+                df = pd.read_csv('{0}/{1}/MOMENTS.txt'.format(s3path,cfd_case))
+                moments = df[df['Physical Time: Physical Time (s)'].between(*time_range)]
+            else:
+                time_switch = 1800
+                case_id = cfd_case.split('_')[1]
+                if case_id in list('123')+['17','18','19']:
+                    time_switch = 4000
+                elif case_id in ['13','14']:
+                    time_switch = 1400
+                elif case_id in ['16']:
+                    time_switch = 2200
+                df = pd.read_csv('{0}/{1}/FORCES.txt'.format(s3path,cfd_case))
+                df.rename(index=str,
+                              columns={'Force Truss Top  2  y Monitor: Force (N)':
+                                       'Force Truss Top 2  y Monitor: Force (N)'},
+                              inplace=True)
+                forces = df[df['Physical Time: Physical Time (s)']>=time_switch]
+                df = pd.read_csv('{0}/{1}/MOMENTS.txt'.format(s3path,cfd_case))
+                moments = df[df['Physical Time: Physical Time (s)']>=time_switch]
+
+            self.logger.info(f'Forces and moments sample # {forces.shape[0]}')
 
         interp_method = 'linear'
 
