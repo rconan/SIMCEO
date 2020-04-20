@@ -136,7 +136,7 @@ try:
     <<SAtmosphere>>
     <<SOpticalPath>>
     <<SEdgeSensors>>
-except E:
+except ModuleNotFoundError:
     warning("CEO is not available on that machine!")
 
 <<broker>>
