@@ -1,7 +1,0 @@
-FEM:
-  build:
-    second_order_filename: dos/FEM/modal_state_space_model.py.mat
-    reorder_RBM: false
-  reduction:
-    hsv_rel_threshold: 1.0e-3
-    start_idx: 3
