@@ -85,7 +85,6 @@ import sys
 import threading
 import time
 import zmq
-import ceo
 import numpy as np
 from collections import OrderedDict
 import os
@@ -127,14 +126,18 @@ class Timer(object):
             print('[%s]' % self.name)
         print('Elapsed time: %s' % (time.time() - self.tstart))
 
-<<CalibrationMatrix>>
-
 <<S-function>>
 
-<<SGMT>>
-<<SAtmosphere>>
-<<SOpticalPath>>
-<<SEdgeSensors>>
+try:
+    import ceo
+
+    <<CalibrationMatrix>>
+    <<SGMT>>
+    <<SAtmosphere>>
+    <<SOpticalPath>>
+    <<SEdgeSensors>>
+except E:
+    warning("CEO is not available on that machine!")
 
 <<broker>>
 
@@ -183,8 +186,11 @@ class broker(threading.Thread):
         self.ops = []
         self.n_op = 0
         self.currentTime = 0.0
-        self.satm = SAtmosphere(self.ops,verbose=self.verbose)
-        self.sgmt = SGMT(self.ops, self.satm, verbose=self.verbose)
+        try:
+            self.satm = SAtmosphere(self.ops,verbose=self.verbose)
+            self.sgmt = SGMT(self.ops, self.satm, verbose=self.verbose)
+        except:
+            pass
 
     def __del__(self):
 
@@ -1749,13 +1755,13 @@ def terminate(self):
 \paragraph{System}
 
 <<driver imports>>=
-from . import control
+from dos import control
 @
 <<control.py>>=
 <<control imports>>
-from .mpc_driver import MPC
-from .MountController import Mount
-from .source import Source
+from dos.mpc_driver import MPC
+from dos.MountController import Mount
+from dos.source import Source
 import numpy as np
 class System:
     def __init__(self,**kwargs):
@@ -1829,10 +1835,12 @@ class Entry:
     def add(self,value):
         self.data += [value]
     @property
+    def time(self):
+        return (np.arange(len(self.data))*self.decimation+self.delay)*self.tau
+    @property
     def timeSeries(self):
-        time   = (np.arange(len(self.data))*self.decimation+self.delay)*self.tau
         values = np.vstack(self.data) if self.data[0].ndim<2 else np.dstack(self.data)
-        return time,values
+        return self.time,values
 class Logs:
     def __init__(self,sampling_time=0,logs_repo=''):
         self.sampling_time = sampling_time

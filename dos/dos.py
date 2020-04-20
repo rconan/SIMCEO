@@ -5,7 +5,7 @@ import threading
 import numpy as np
 from ruamel.yaml import YAML
 yaml=YAML(typ='safe')
-from dos.driver import Server, Client, Atmosphere
+from .driver import Server, Client, Atmosphere
 import zmq
 import pickle
 import zlib
@@ -245,7 +245,7 @@ class Entry:
     @property
     def timeSeries(self):
         values = np.vstack(self.data) if self.data[0].ndim<2 else np.dstack(self.data)
-        return self.time, values
+        return self.time,values
 class Logs:
     def __init__(self,sampling_time=0,logs_repo=''):
         self.sampling_time = sampling_time
