@@ -487,7 +487,7 @@ try:
                         db[str(key)] = C
                         db.close()
 except ModuleNotFoundError:
-    warning("CEO is not available on that machine!")
+    print("WARNING: CEO is not available on that machine!")
 
 class broker(threading.Thread):
 

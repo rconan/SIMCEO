@@ -137,7 +137,7 @@ try:
     <<SOpticalPath>>
     <<SEdgeSensors>>
 except ModuleNotFoundError:
-    warning("CEO is not available on that machine!")
+    print("WARNING: CEO is not available on that machine!")
 
 <<broker>>
 
