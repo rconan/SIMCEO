@@ -486,7 +486,7 @@ try:
                         self.logger.info("Saving command matrix to database %s!",filename)
                         db[str(key)] = C
                         db.close()
-except E:
+except ModuleNotFoundError:
     warning("CEO is not available on that machine!")
 
 class broker(threading.Thread):
