@@ -1,6 +1,6 @@
 from scipy import signal
 import pickle
-from dos.mpc_driver import MPC
+from .sh_aco_qp_driver import SHAcO_qp
 from dos.MountController import Mount
 from dos.source import Source
 import numpy as np
