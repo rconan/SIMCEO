@@ -2,6 +2,8 @@ from scipy import signal
 import pickle
 from dos.mpc_driver import MPC
 from dos.MountController import Mount
+from dos.MountControllerMTM import MountControl
+from dos.MountControllerMTM import MountDrives
 from dos.source import Source
 import numpy as np
 class System:
