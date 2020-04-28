@@ -23,6 +23,12 @@ drivers:
         lien: [FEM,MC_M2_lcl_force_6F]
   FEM:
     inputs:
+      OSS_AzDrive_F:
+        size: 8
+      OSS_ElDrive_F:
+        size: 8
+      OSS_GIRDrive_F:
+        size: 4
       OSS_M1_lcl_6F:
         size: 42
         logs:
@@ -52,6 +58,12 @@ drivers:
         logs:
           decimation: 1
     outputs:
+      OSS_AzDrive_D:
+        size: 8
+      OSS_ElDrive_D:
+        size: 8
+      OSS_GIRDrive_D:
+        size: 4
       OSS_M1_lcl:
         size: 42
         logs:
@@ -60,3 +72,44 @@ drivers:
         size: 42
         logs:
           decimation: 1
+  MountControl:
+    server: false
+    inputs:
+      OSS_AzDrive_D:
+        lien: [FEM,OSS_AzDrive_D]
+      OSS_ElDrive_D:
+          lien: [FEM,OSS_ElDrive_D]
+      OSS_GIRDrive_D:
+        lien: [FEM,OSS_GIRDrive_D]
+    outputs:
+      Mount_cmd:
+        lien: [MountDrives,Mount_cmd]
+  MountDrives:
+    server: false
+    inputs:
+      Mount_cmd:
+        size: 3
+      OSS_AzDrive_D:
+        lien: [FEM,OSS_AzDrive_D]
+      OSS_ElDrive_D:
+          lien: [FEM,OSS_ElDrive_D]
+      OSS_GIRDrive_D:
+        lien: [FEM,OSS_GIRDrive_D]
+    shape: [1,20]
+    split:
+      indices_or_sections: [8,16]
+      axis: 1
+    outputs:
+      OSS_AzDrive_F:
+        lien: [FEM,OSS_AzDrive_F]
+        logs:
+          decimation: 1
+      OSS_ElDrive_F:
+        lien: [FEM,OSS_ElDrive_F]
+        logs:
+          decimation: 1
+      OSS_GIRDrive_F:
+        lien: [FEM,OSS_GIRDrive_F]
+        logs:
+          decimation: 1
+
