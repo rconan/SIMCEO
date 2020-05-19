@@ -1758,8 +1758,10 @@ from dos import control
 @
 <<control.py>>=
 <<control imports>>
+#from dos.MountController import Mount
+from CythonDrivers import MountControl
+from CythonDrivers import MountDrives
 from .sh_aco_qp_driver import SHAcO_qp
-from dos.MountController import Mount
 from dos.source import Source
 import numpy as np
 class System:
