@@ -204,6 +204,7 @@ class FEM:
             second_order=None,
             fem_inputs=None, fem_outputs=None,
             reorder_RBM=False,
+            damping_ratio=None,
             output_support=None,
             log_states=False, log_path='./variables/', log_type=np.float32,
             fem_io_filename=None):
@@ -228,9 +229,18 @@ class FEM:
         self.INPUTS = fem_inputs
         self.OUTPUTS = fem_outputs
         self.state = {'u':None,'y':None,'A':None,'B':None,'C':None,'D':None, 'x': None, 'step':0}
+        
         self.__setprop__()
+        
         if reorder_RBM:
             self.reorder_rbm()
+
+        if damping_ratio is not None:
+            try:
+                self.Z = damping_ratio*np.ones_like(np.ravel(self.Z))
+            except:
+                self.logger.warning('Unable to change the model damping!!!')
+
         if output_support is not None:
             self.output_support = output_support
 
@@ -240,26 +250,6 @@ class FEM:
 
         self.info()
         return "FEM"
-    
-    # def _flagger(self, flag_name=None, 
-    #                 initial_state=True, 
-    #                 initialize=None):
-    #     '''
-    #     Create the flagger system for conditionals during real-time simulation.
-        
-    #     Parameters
-    #     ----------
-    #     inputs:
-    #         - flag_name (String):
-    #         - initialize (Boolean):
-    #     '''
-
-    #     if initialize is not None:
-    #         self.flags = dict()
-        
-    #     if flag_name is not None:
-    #         if flag_name not in self.flags:
-    #             self.flags[flag_name] = initial_state
 
 
     def __setprop__(self):
@@ -692,11 +682,13 @@ class FEM:
         W = np.block([[X1,X2],[X3,X4]])
         return W
 
+
     def grammian2(self):
-        A,B,C = self.state_space()
+        A,B,_C = self.state_space()
         Q = - B@B.T
         W = solve_lyapunov(A.toarray(),Q.toarray())
         return W
+
 
     def Init(self,dt=0.5e-3,
               inputs=None,outputs=None,

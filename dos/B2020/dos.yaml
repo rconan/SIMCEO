@@ -75,6 +75,8 @@ drivers:
   MountControl:
     server: false
     inputs:
+      Mount_SP:
+        size: 3
       OSS_AzDrive_D:
         lien: [FEM,OSS_AzDrive_D]
       OSS_ElDrive_D:
