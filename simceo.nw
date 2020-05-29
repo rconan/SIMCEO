@@ -1758,8 +1758,9 @@ from dos import control
 @
 <<control.py>>=
 <<control imports>>
+from CythonDrivers import MountControl
+from CythonDrivers import MountDrives
 from .sh_aco_qp_driver import SHAcO_qp
-from dos.MountController import Mount
 from dos.source import Source
 import numpy as np
 class System:
@@ -1785,6 +1786,17 @@ class System:
     def output(self):
         return np.atleast_2d(self.__yout.ravel())
 @
+
+
+\paragraph{Cython Drivers}
+
+The folder [[CythonDrivers]] has the client drivers generated through a cythonization process. 
+[[control.py]] imports those drivers.
+<<initCythonDrivers.py>>=
+from .MountControl import MountControl
+from .MountDrives import MountDrives
+@
+
 
 \subsubsection{Atmosphere}
 \label{sec:driver.atmosphere}
