@@ -1417,7 +1417,7 @@ def stepping(self):
     for l in range(self.N_SAMPLE):
         self.logger.debug('Step #%d',l)
         self.__k_step = l
-        yield [x.update(l) for x in v] + [x.output(l) for x in v]
+        yield [x.update(l) for x in v]
 <<running the simulation>>=
 def run(self):
     if not self.pushed:
@@ -1641,6 +1641,7 @@ def update(self,step):
         self.logger.debug('Updating!')
         m = 'Update'
         <<client-server exchange>>
+    self.output(step)
 def output(self,step):
     if step>=self.delay:
             m = 'Outputs'
@@ -1723,6 +1724,7 @@ def update(self,step):
         u = np.hstack([_.data.reshape(1,-1) for _  in self.inputs.values()])
         self.system.update(u)
         self.logger.debug('u: %s',u.shape)
+    self.output(step)
 
 def output(self,step):
     if step>=self.delay:
@@ -1776,13 +1778,13 @@ class System:
 
     def update(self,u):
         try:
-            self.__yout = self.system.C @ self.__xout + self.system.D @ u
             self.__xout = self.system.A @ self.__xout + self.system.B @ u
+            self.__yout = self.system.C @ self.__xout + self.system.D @ u
         except ValueError:
             u = u.reshape(self.system.B.shape[1],1)
-            self.__yout = self.system.C @ self.__xout + self.system.D @ u
             self.__xout = self.system.A @ self.__xout + self.system.B @ u
-
+            self.__yout = self.system.C @ self.__xout + self.system.D @ u
+            
     def output(self):
         return np.atleast_2d(self.__yout.ravel())
 @
