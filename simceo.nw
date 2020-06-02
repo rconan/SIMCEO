@@ -1762,6 +1762,8 @@ from dos import control
 <<control imports>>
 from CythonDrivers import MountControl
 from CythonDrivers import MountDrives
+from CythonDrivers import M1HPloadcells
+from CythonDrivers import M1LocalControl
 from .sh_aco_qp_driver import SHAcO_qp
 from dos.source import Source
 import numpy as np
@@ -1797,6 +1799,8 @@ The folder [[CythonDrivers]] has the client drivers generated through a cythoniz
 <<initCythonDrivers.py>>=
 from .MountControl import MountControl
 from .MountDrives import MountDrives
+from .M1HPloadcells import M1HPloadcells
+from .M1LocalControl import M1LocalControl
 @
 
 

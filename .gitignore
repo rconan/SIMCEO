@@ -17,25 +17,34 @@ etc/gmto*
 sandbox
 *.npy
 *.r2017a
+*.r2018a
+*.r2018b
 *.el
 *.npz
 *.bak
 *.dir
 *.dat
-*.r2016a
 *.png
 *.svg
-/M1
 *.zip
+/M1
+
+# Generated from make server
+etc
+# Generated from make client
 *init__.py
+control.py
+dos.py
+driver.py
+CythonDrivers
+# Generated from make doc
+simceo_refman.pdf
+simceo_refman.toc
+simceo.tex
+
 timing
 simceo.code-workspace
 testDT
 SHAcO_qp.pickle
-simceo_refman.toc
 old_notebooks
-CythonDrivers
-etc
-control.py
-simceo_refman.pdf
-simceo.tex
+
