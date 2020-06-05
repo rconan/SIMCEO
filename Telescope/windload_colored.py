@@ -6,6 +6,7 @@ import logging
 import s3fs
 from scipy.io import loadmat
 import logging
+import itertools,datetime
 
 logging.basicConfig()
 
@@ -70,16 +71,23 @@ def cfd2fem(F,M,R,rot_mat=np.eye(3)):
     FM_IM = np.zeros((F.shape[0],6))
     FM_IM[:,:3] = (rot_mat@F.T).T
 
-    R = np.asarray(R)
-    #M = R x F
-    #Mx = Ry Fz - Rz Fy
-    #My = Rz Fx - Rx Fz
-    #Mz = Rx Fy - Ry Fx
-    crossR = np.asarray([ [0, -R[2], R[1]], [R[2], 0, -R[0]], [-R[1], R[0], 0]])
-    FM_IM[:,3:] = (rot_mat@(M.T-crossR@F.T)).T
+    if R:
+        R = np.asarray(R)
+        #M = R x F
+        #Mx = Ry Fz - Rz Fy
+        #My = Rz Fx - Rx Fz
+        #Mz = Rx Fy - Ry Fx
+        crossR = np.asarray([ [0, -R[2], R[1]], [R[2], 0, -R[0]], [-R[1], R[0], 0]])
+        FM_IM[:,3:] = (rot_mat@(M.T-crossR@F.T)).T
+    else:
+        FM_IM[:,3:] = (rot_mat@(M.T)).T
+
     return FM_IM
 
 def add_colored_noise(FM_IM,fs,windload_fs,psd_exp=-13/3):
+
+    if fs==windload_fs:
+        return FM_IM
 
     s0n = []
 
@@ -91,6 +99,9 @@ def add_colored_noise(FM_IM,fs,windload_fs,psd_exp=-13/3):
         fs_ratio = fs/windload_fs
         x  = np.arange(FM.shape[0])*fs_ratio
         xi = np.arange(x[-1])
+        if FM.sum()==0:
+            s0n += [np.zeros(int(xi.size))]
+            continue
         yi = interp1d(x,FM.T,kind='linear',bounds_error=True)(xi)
 
         # PSD of sub-sampled signal 
@@ -104,7 +115,7 @@ def add_colored_noise(FM_IM,fs,windload_fs,psd_exp=-13/3):
         nu = np.fft.fftfreq(nSample,1/fs)
         A = yc*fny**(13/3)
         psd = np.zeros_like(nu)
-        idx = np.abs(nu)>(fny-5)
+        idx = np.abs(nu)>(fny-windload_fs/5)
         psd[idx] = A*np.abs(nu[idx])**psd_exp
 
         phi = np.exp(2*1j*np.pi*np.random.randn(int(nSample/2)))
@@ -181,6 +192,7 @@ class WindLoad:
         self.logger.info('Start')
 
         self.state['fs'] = fs
+        self.case = cfd_case
 
         if not (len(groups)==1 and 'M1TransientWind' in groups):
 
@@ -239,14 +251,14 @@ class WindLoad:
                 self.logger.info(' . M2 cell loading: ')
                 F = np.vstack([forces['Force M2_cell {0} Monitor: Force (N)'.format(x)] for x in list('xyz')]).T
                 M = np.vstack([moments['Moment M2_cell {0} Monitor: Moment (N-m)'.format(x)] for x in list('xyz')]).T
-                FM_IM += cfd2fem(F,M,FEM_nodes['M2 cell'])
+                FM_IM += cfd2fem(F,M,FEM_nodes['top-end'])
 
                 self.logger.info(' . M2 mirror loading: ')
                 for k in range(7):
                     l = (k+1)%7
                     F = np.vstack([forces['Force M2_{1:d} {0} Monitor: Force (N)'.format(x,l)] for x in list('xyz')]).T
                     M = np.vstack([moments['Moment M2_{1:d} {0} Monitor: Moment (N-m)'.format(x,l)] for x in list('xyz')]).T
-                    FM_IM += cfd2fem(F,M,FEM_nodes['M2'][k])
+                    FM_IM += cfd2fem(F,M,FEM_nodes['top-end'])
 
                 input = 'mount.top-end'
                 self.state['Groups'][input] = {'u':None,'y':None}
@@ -269,6 +281,24 @@ class WindLoad:
                 FM_IM_TRUSS_bot = [add_colored_noise(cfd2fem(F,M,R),fs,windload_fs) for F,M,R in zip(F_Truss_bot,M_Truss_bot,FEM_nodes['truss']['bottom'])]
 
                 FM_IM = np.dstack([np.dstack(FM_IM_TRUSS_bot),np.dstack(FM_IM_TRUSS_top)])
+                self.state['Groups'][input] = {'u':None,'y':None}
+                self.state['Groups'][input]['u'] = FM_IM
+                self.logger.info("['{}']".format(input))
+
+            if 'truss_distributed_forces' in groups:
+                self.logger.info(' . truss loading: ')
+                input = "Truss_distributed_windF"
+                s3  = s3fs.S3FileSystem(anon=False)
+                key = '{0}/{1}/trussinputs.npz'.format(s3path,cfd_case)
+                with s3.open(key,'rb') as f:
+                    data = np.load(f)
+                    F = data["input"].T
+                t = 500.0+np.arange(F.shape[0])/5
+                if time_range:
+                    idx = np.logical_and(t>=time_range[0],t<=time_range[1]);
+                    FM_IM =  add_colored_noise(F[idx,:],fs,5)
+                else:
+                    FM_IM =  add_colored_noise(F,fs,5)
                 self.state['Groups'][input] = {'u':None,'y':None}
                 self.state['Groups'][input]['u'] = FM_IM
                 self.logger.info("['{}']".format(input))
@@ -360,18 +390,18 @@ class WindLoad:
                 self.logger.info(' . GIR loading: ')
                 F = np.vstack([forces['Force GIR {0} Monitor: Force (N)'.format(x)] for x in list('xyz')]).T
                 M = np.vstack([moments['Moment GIR 1 {0} Monitor: Moment (N-m)'.format(x)] for x in list('xyz')]).T
-                FM_IM_x = cfd2fem(F,M,FEM_nodes['GIR'])
+                FM_IM_x = cfd2fem(F,M,[])
 
                 self.logger.info(' . C-Ring loading: ')
                 for k,e in enumerate(['','+','-']):
                     F = np.vstack([forces['Force C Ring{1} {0} Monitor: Force (N)'.format(x,e)] for x in list('xyz')]).T
                     M = np.vstack([moments['Moment C Ring{1}  {0} Monitor: Moment (N-m)'.format(x,e)] for x in list('xyz')]).T
-                    FM_IM_x += cfd2fem(F,M,FEM_nodes['C-Ring'][k])
+                    FM_IM_x += cfd2fem(F,M,[])
 
                 self.logger.info(' . M1 cell loading: ')
                 F = np.vstack([forces['Force M1_cell {0} Monitor: Force (N)'.format(x)] for x in list('xyz')]).T
                 M = np.vstack([moments['Moment M1_cell {0} Monitor: Moment (N-m)'.format(x)] for x in list('xyz')]).T
-                FM_IM_x += cfd2fem(F,M,FEM_nodes['M1'][k])
+                FM_IM_x += cfd2fem(F,M,[])
 
                 FM_IM_x/=7
                 F_IM_x = FM_IM_x[:,:3]
@@ -428,13 +458,13 @@ class WindLoad:
 
             if 'M1TransientWind' in groups:
                 self.logger.info(' . M1TransientWind: ')
-                input = 'M1TransientWind'
-                key = '{0}/{1}/distributed_maxRes_M1.mat'.format(s3path,cfd_case)
+                input = 'M1_distributed_windF'
+                key = '{0}/{1}/M1_distF.mat'.format(s3path,cfd_case)
                 s3  = s3fs.S3FileSystem(anon=False)
                 with s3.open(key,'rb') as f:
                     data = loadmat(f)
                 windload = data['transientWindM1']['signals'][0,0]['values'][0,0]
-                FM_IM = add_colored_noise(windload,fs,windload_fs)
+                FM_IM = add_colored_noise(windload,fs,5)
                 self.state['Groups'][input] = {'u':None,'y':None}
                 self.state['Groups'][input]['u'] = FM_IM
                 self.logger.info("['{}']".format(input))
@@ -468,3 +498,70 @@ class WindLoad:
 
     def Terminate(self,**kwargs):
         return "Wind loads deleted!"
+
+    def mount_dump(self,filename):
+        FMxyz = self.state['Groups']['mount.M1']['u']
+        data = []
+        for k in range(7):
+            for l in range(3):
+                data += [FMxyz[:,l,k]]
+            for l in range(3):
+                data += [FMxyz[:,l+3,k]]
+
+        FMxyz = self.state['Groups']['OSS_Truss_6F']['u']
+        truss = ['Lower Truss +Y','Lower Truss +X','Lower Truss -Y'] + \
+            ['Upper Truss +Y','Upper Truss +X','Upper Truss -Y']
+        for k in range(6):
+            for l in range(3):
+                data += [FMxyz[:,l,k]]
+            for l in range(3):
+                data += [FMxyz[:,l+3,k]]
+
+        FMxyz = self.state['Groups']['mount.top-end']['u']
+        for l in range(3):
+            data += [FMxyz[:,l]]
+        for l in range(3):
+            data += [FMxyz[:,l+3]]
+
+        data = np.swapaxes(np.vstack(data),1,0)
+
+        m1 = [f"M1S{k}" for  k in range(1,8)]
+        fm = list(itertools.chain(*[[_+" Forces [N]"]+[_+" Moments [Nm]"] for _ in m1]))
+
+        truss = ['Lower Truss +Y','Lower Truss +X','Lower Truss -Y'] + \
+            ['Upper Truss +Y','Upper Truss +X','Upper Truss -Y']
+        fm += list(itertools.chain(*[[_+" Forces [N]"]+[_+" Moments [Nm]"] for _ in truss]))
+
+        fm += ["Top End Forces","Top End Moments"]
+
+        xyz = list('XYZ')
+        oss = [f"OSS {_}" for _ in xyz]
+
+        t  = self.state['Time']
+        idx = t+400>= self.state['Time'][-1]
+        t = t[idx]
+        t = t - t[0]
+
+        index = pd.MultiIndex.from_product([fm,oss],names=['Time [s]',''])
+        df = pd.DataFrame(data[idx,:], index=t, columns=index)
+
+        try:
+            case = self.case.split("_")
+            z = int(case[1][:-1])
+            lines = [self.case,
+                     f"Date: {datetime.date.today()}",
+             "Wind time series for the Mount",
+            f"External {case[4][:-2]}m/s wind speed",
+            f"Telescope azimuth: {case[2][:-2]} degree from wind direction",
+            f"Telescope pointed {case[1][:-1]} degrees from zenith",
+            ("Enclosure vents "+"open" if case[3]=="os" else "closed") +\
+                     " & wind screen "+"stowed" if case[3]=="os" or z==60 else "deployed","\n"]
+        except:
+            lines = [self.case,
+                     f"Date: {datetime.date.today()}",
+                     "Wind time series for the Mount","\n"]
+
+        f = open(filename,'w')
+        f.write("\n".join(lines))
+        df.to_csv(f,float_format="%.2f")
+        f.close()
