@@ -349,7 +349,7 @@ class FEM:
         bd = ms[:, a.shape[1]:]
         return ad.tocsr(),bd.toarray()
 
-    def gpu_c2s(self,a,b,dt,ftype=np.float64):
+    def gpu_c2s(self,a,b,dt):
         """
             Convert a continuous state space model in a discrete one
         using the second order modules iterativelly.
@@ -373,8 +373,8 @@ class FEM:
         I_2 = a[ss:,:ss].diagonal()
         I_3 = a[ss:,ss:].diagonal()
 
-        Ad = np.zeros(a.shape, dtype=ftype)
-        Bd = np.zeros(b.shape, dtype=ftype)
+        Ad = np.zeros(a.shape, dtype=np.float32)
+        Bd = np.zeros(b.shape, dtype=np.float32)
 
         A_ = np.zeros((3,3))
         B_ = np.zeros((2,b.shape[1]))
@@ -396,7 +396,7 @@ class FEM:
         return sparse.csr_matrix(Ad), Bd
 
 
-    def state_space(self,dt=None,ftype=np.float64):
+    def state_space(self,dt=None):
         """
         Build the state space model from the second order model, if dt is given returns the discrete state space
         otherwise returns return the continuous state space
@@ -414,12 +414,12 @@ class FEM:
         s = self.N,self.N
         OZ = self.O*self.Z
         OZ[np.isnan(OZ)] = 0
-        A = sparse.bmat( [[sparse.coo_matrix(s,dtype=ftype),sparse.eye(self.N,dtype=ftype)],
+        A = sparse.bmat( [[sparse.coo_matrix(s,dtype=np.float),sparse.eye(self.N,dtype=np.float)],
                           [sparse.diags(-self.O**2),sparse.diags(-2*OZ)]],
                          format='csr')
-        B = sparse.bmat( [[sparse.coo_matrix((self.N,self.Phim.shape[0]),dtype=ftype)],
+        B = sparse.bmat( [[sparse.coo_matrix((self.N,self.Phim.shape[0]),dtype=np.float)],
                                 [self.Phim.T]],format='csr')
-        C = sparse.bmat( [[self.Phi,sparse.coo_matrix((self.Phi.shape[0],self.N),dtype=ftype)]],format='csr')
+        C = sparse.bmat( [[self.Phi,sparse.coo_matrix((self.Phi.shape[0],self.N),dtype=np.float)]],format='csr')
         h = int(A.shape[0]/2)
         print('State space synopsis:')
         print(' * A shape: {0} ; Block diagonal test (0,{5:d},1,1): {1} {2} {3} {4}'.format(A.shape,
@@ -708,7 +708,7 @@ class FEM:
                            'step':0})        
         # Initializing GPU state space
         if CUDA_LIBRARY:
-            self._initialize_gpu_env()
+            self._initialize_gpu_env(var_type = np.float32)
       
         # Create the state logging process
         if self.log_states:
@@ -719,7 +719,7 @@ class FEM:
         self.logger.info('      RUNNING SIMULATION...')
 
 
-    def _initialize_gpu_env(self, var_type=np.float64):
+    def _initialize_gpu_env(self, var_type):
 
         '''
         Initialize the GPU environment and the proper variables.
@@ -787,7 +787,7 @@ class FEM:
             a += s
 
         if CUDA_LIBRARY:
-            self.gpu['u'] = cp.array(_u, dtype = np.float64)
+            self.gpu['u'] = cp.array(_u, dtype = np.float32)
             self.gpu['x'] = self.gpu['A'].dot(self.gpu['x']) + self.gpu['B']@self.gpu['u']
             self.gpu['y'] = self.gpu['C'].dot(self.gpu['x']) 
             self.state['y'] = self.gpu['y'].get().ravel()
