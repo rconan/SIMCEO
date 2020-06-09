@@ -490,6 +490,7 @@ class WindLoad:
                     FM_IM = add_colored_noise(windload[idx,:],fs,5)
                 else:
                     FM_IM = add_colored_noise(windload,fs,5)
+                    
                 self.state['Groups'][input] = {'u':None,'y':None}
                 self.state['Groups'][input]['u'] = FM_IM
                 self.logger.info("['{}']".format(input))
