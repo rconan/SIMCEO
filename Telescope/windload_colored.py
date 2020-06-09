@@ -4,7 +4,7 @@ from scipy.interpolate import interp1d
 from scipy.signal import welch
 import logging
 import s3fs
-from scipy.io import loadmat
+from scipy.io import loadmat, savemat
 import logging
 import itertools,datetime
 
@@ -182,13 +182,14 @@ class WindLoad:
             self.Start(**kwargs)
 
     def Start(self,cfd_case, fs=2e3,windload_fs=20,
-              s3path='s3://gmto.starccm/StandardYear/20Hz',
+              s3path='s3://gmto.starccm/Baseline2020',
               groups=['top-end','truss',
                       'GIR','C-Ring',
                       'M1','M2'],
               inputs_version=0,
               M2type='PDR',
-              time_range=[]):
+              time_range=[],
+              last_seconds=None):
         self.logger.info('Start')
 
         self.state['fs'] = fs
@@ -207,6 +208,20 @@ class WindLoad:
                 forces = df[df['Physical Time: Physical Time (s)'].between(*time_range)]
                 df = pd.read_csv('{0}/{1}/MOMENTS.txt'.format(s3path,cfd_case))
                 moments = df[df['Physical Time: Physical Time (s)'].between(*time_range)]
+            elif last_seconds is not None:
+                df = pd.read_csv('{0}/{1}/FORCES.txt'.format(s3path,cfd_case))
+                df.rename(index=str,
+                              columns={'Force Truss Top  2  y Monitor: Force (N)':
+                                       'Force Truss Top 2  y Monitor: Force (N)'},
+                              inplace=True)
+                data_time = df['Physical Time: Physical Time (s)']
+                time_range = [data_time[-1]-last_seconds,data_time[-1]]
+                forces = df[data_time.between(*time_range)]
+                df = pd.read_csv('{0}/{1}/MOMENTS.txt'.format(s3path,cfd_case))
+                data_time = df['Physical Time: Physical Time (s)']
+                l = data_time.values[-1]
+                time_range = [l-last_seconds,l]
+                moments = df[data_time.between(*time_range)]
             else:
                 time_switch = 1800
                 case_id = cfd_case.split('_')[1]
@@ -464,7 +479,18 @@ class WindLoad:
                 with s3.open(key,'rb') as f:
                     data = loadmat(f)
                 windload = data['transientWindM1']['signals'][0,0]['values'][0,0]
-                FM_IM = add_colored_noise(windload,fs,5)
+                t = np.arange(windload.shape[0])/5
+                try:
+                    data_time = df['Physical Time: Physical Time (s)'].values
+                    t = t - t[-1] + data_time[-1]
+                except:
+                    pass
+                if time_range:
+                    idx = np.logical_and(t>=time_range[0],t<=time_range[1]);
+                    FM_IM = add_colored_noise(windload[idx,:],fs,5)
+                else:
+                    FM_IM = add_colored_noise(windload,fs,5)
+                    
                 self.state['Groups'][input] = {'u':None,'y':None}
                 self.state['Groups'][input]['u'] = FM_IM
                 self.logger.info("['{}']".format(input))
@@ -565,3 +591,15 @@ class WindLoad:
         f.write("\n".join(lines))
         df.to_csv(f,float_format="%.2f")
         f.close()
+
+
+    def m2_dump(self):
+        groups = self.state['Groups']
+        IMLoads = {
+            key: {
+                "values": groups[key]["u"].reshape(groups[key]["u"].shape[0],-1),
+                "dimensions": np.prod(groups[key]["u"].shape[1:])
+            } for key in groups}
+        IMLoads.update({"time": self.state["Time"]})
+        savemat(self.case+".mat",{"IMLoads":IMLoads})
+
