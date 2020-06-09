@@ -7,6 +7,7 @@ simulation:
 
 drivers:
   wind_loads:
+    sampling_rate: 40 #2000/50 = 50Hz
     outputs:
       OSS_TopEnd_6F:
         lien: [FEM,OSS_TopEnd_6F]
@@ -45,6 +46,8 @@ drivers:
         size: 6
       OSS_Truss_6F:
         size: 36
+      MC_M2_lcl_force_6F:
+        size: 42  
       M1_distributed_windF:
         size: 5127    
 #      OSS_Harpoint_delta_F:
@@ -63,8 +66,6 @@ drivers:
         lien: [M1LocalControl, M1_Rel_F_S6]
       M1_actuators_segment_7:
         lien: [M1LocalControl, M1_Rel_F_S7]
-      # MC_M2_lcl_force_6F:
-      #   size: 42
     outputs:
       #Mount
       OSS_AzDrive_D:
