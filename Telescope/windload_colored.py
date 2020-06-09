@@ -479,7 +479,17 @@ class WindLoad:
                 with s3.open(key,'rb') as f:
                     data = loadmat(f)
                 windload = data['transientWindM1']['signals'][0,0]['values'][0,0]
-                FM_IM = add_colored_noise(windload,fs,5)
+                t = np.arange(windload.shape[0])/5
+                try:
+                    data_time = df['Physical Time: Physical Time (s)'].values
+                    t = t - t[-1] + data_time[-1]
+                except:
+                    pass
+                if time_range:
+                    idx = np.logical_and(t>=time_range[0],t<=time_range[1]);
+                    FM_IM = add_colored_noise(windload[idx,:],fs,5)
+                else:
+                    FM_IM = add_colored_noise(windload,fs,5)
                 self.state['Groups'][input] = {'u':None,'y':None}
                 self.state['Groups'][input]['u'] = FM_IM
                 self.logger.info("['{}']".format(input))
