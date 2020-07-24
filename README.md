@@ -61,14 +61,14 @@ drivers:
   device name:
     server: true
     delay: 0 # [sample]
-    sampling rate: &update_rate 1 # [sample]
+    sampling_rate: &update_rate 1 # [sample]
     inputs:
       input name:
         size: 0
         lien: # [device, device output name]
     outputs:
       output name:
-        sampling rate: &output_rate *update_rate # [sample]
+        sampling_rate: &output_rate *update_rate # [sample]
         size: 0
         lien: # [device, device input name]
         logs:
