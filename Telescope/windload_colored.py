@@ -195,7 +195,7 @@ class WindLoad:
         self.state['fs'] = fs
         self.case = cfd_case
 
-        if not (len(groups)==1 and 'M1TransientWind' in groups):
+        if not (len(groups)==1 and ('M1TransientWind' in groups or 'truss_distributed_forces' in groups)):
 
             self.logger.info('Loading CFD forces and moments from {0} @ {1}'.format(cfd_case,s3path))
 
@@ -223,7 +223,8 @@ class WindLoad:
                 time_range = [l-last_seconds,l]
                 moments = df[data_time.between(*time_range)]
             else:
-                time_switch = 1800
+                time_switch = 0#1800
+                """
                 case_id = cfd_case.split('_')[1]
                 if case_id in list('123')+['17','18','19']:
                     time_switch = 4000
@@ -231,6 +232,7 @@ class WindLoad:
                     time_switch = 1400
                 elif case_id in ['16']:
                     time_switch = 2200
+                """
                 df = pd.read_csv('{0}/{1}/FORCES.txt'.format(s3path,cfd_case))
                 df.rename(index=str,
                               columns={'Force Truss Top  2  y Monitor: Force (N)':
@@ -301,14 +303,14 @@ class WindLoad:
                 self.logger.info("['{}']".format(input))
 
             if 'truss_distributed_forces' in groups:
-                self.logger.info(' . truss loading: ')
+                self.logger.info(' . distributed truss loading: ')
                 input = "Truss_distributed_windF"
                 s3  = s3fs.S3FileSystem(anon=False)
                 key = '{0}/{1}/trussinputs.npz'.format(s3path,cfd_case)
                 with s3.open(key,'rb') as f:
                     data = np.load(f)
-                    F = data["input"].T
-                t = 500.0+np.arange(F.shape[0])/5
+                    F = data["input"].copy().T
+                    t = data["time"].copy()
                 if time_range:
                     idx = np.logical_and(t>=time_range[0],t<=time_range[1]);
                     FM_IM =  add_colored_noise(F[idx,:],fs,5)
