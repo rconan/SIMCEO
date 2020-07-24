@@ -1,4 +1,5 @@
-NOWEBPATH	= /usr/local/Cellar/noweb/2.11b
+NOWEBPATH	= /usr
+#NOWEBPATH	= /usr/local/Cellar/noweb/2.11b
 WEAVE   	= $(NOWEBPATH)/bin/noweave
 TANGLE    	= $(NOWEBPATH)/bin/notangle
 
@@ -8,11 +9,13 @@ server: simceo.nw simceo.py
 client:
 	mkdir -p etc
 	mkdir -p dos
+	mkdir -p CythonDrivers
 	$(TANGLE) -Rdos.yaml simceo.nw > etc/dos.yaml
 	$(TANGLE) -Rinit.py simceo.nw > dos/__init__.py
 	$(TANGLE) -Rdos.py simceo.nw > dos/dos.py
 	$(TANGLE) -Rdriver.py simceo.nw > dos/driver.py
 	$(TANGLE) -Rcontrol.py simceo.nw > dos/control.py
+	$(TANGLE) -RinitCythonDrivers.py simceo.nw > CythonDrivers/__init__.py
 service:
 	$(TANGLE) -Rsimceo simceo.nw > simceo
 	echo "The simceo script resides in your home ~/bin directory"
