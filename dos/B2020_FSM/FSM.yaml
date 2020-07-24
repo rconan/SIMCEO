@@ -1,0 +1,5 @@
+System:
+  sampling time: 0.5e-3 # second
+  parameters:
+    num: [0.00147056, 0.00294112, 0.00147056]
+    denom: [ 1.        , -1.90424379,  0.91012603]
