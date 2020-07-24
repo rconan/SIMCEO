@@ -314,23 +314,26 @@ class Client(Driver):
         if step>=self.delay:
             a = 0
             b = 0
-            data = self.system.output().reshape(self.shape)
-            self.logger.debug('Output shape: %s', data.shape)
-            self.logger.debug('Splitting output: %s',self.split)
-            data = np.split( data , **self.split)
-            for k,v in self.outputs.items():
-                if (step-self.delay)%v.sampling_rate==0:
-                    self.logger.debug('Outputing %s [%s]!',k,data[0].shape)
-                    v.data[...] = data.pop(0).reshape(v.size)
-                    """
-                    b = a + v.data.size
-                    self.logger.debug('%s [%s]: [%d,%d]',k,v.size,a,b)
-                    v.data[...] = self.system.output()[0,a:b].reshape(v.size)
-                    a = b
-                    """
-                    if v.logs is not None and (step-self.delay)%v.logs.decimation==0:
-                        self.logger.debug('LOGGING')
-                        v.logs.add(v.data.copy())
+            try:
+                data = self.system.output().reshape(self.shape)
+                self.logger.debug('Output shape: %s', data.shape)
+                self.logger.debug('Splitting output: %s',self.split)
+                data = np.split( data , **self.split)
+                for k,v in self.outputs.items():
+                    if (step-self.delay)%v.sampling_rate==0:
+                        self.logger.debug('Outputing %s [%s]!',k,data[0].shape)
+                        v.data[...] = data.pop(0).reshape(v.size)
+                        """
+                        b = a + v.data.size
+                        self.logger.debug('%s [%s]: [%d,%d]',k,v.size,a,b)
+                        v.data[...] = self.system.output()[0,a:b].reshape(v.size)
+                        a = b
+                        """
+                        if v.logs is not None and (step-self.delay)%v.logs.decimation==0:
+                            self.logger.debug('LOGGING')
+                            v.logs.add(v.data.copy())
+            except AttributeError:
+                self.logger.debug("No outputs")
 
 
     def terminate(self):
