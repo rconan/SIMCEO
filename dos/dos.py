@@ -179,7 +179,7 @@ class DOS(threading.Thread):
             if t<1:
                 return '{:.1f}ms'.format(t*1e3)
             else:
-                return '{:.1f}s'.format(t)
+                return '{:.3f}s'.format(t)
 
         main = Digraph(format='png', node_attr={'shape': 'plaintext'})
 
@@ -215,8 +215,9 @@ class DOS(threading.Thread):
                     for ik in self.drivers[d].inputs:
                         data = self.drivers[d].inputs[ik]
                         if data.lien is not None:
-                            main.edge(search_method(data.lien[0],data.lien[1]),
-                                      '{0}_{1}:{1}_update'.format(str(s),d))
+                            if 'update' in m:
+                                main.edge(search_method(data.lien[0],data.lien[1]),
+                                          '{0}_{1}:{1}_update'.format(str(s),d))
                     for ok in self.drivers[d].outputs:
                         data = self.drivers[d].outputs[ok]
                         if data.lien is not None:
