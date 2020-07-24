@@ -461,6 +461,11 @@ class FEM:
                            'A':A,'B':B,'C':C,'D':None,
                            'x':np.zeros(A.shape[1]),
                            'step':0})
+    def reset_state(self):
+        self.state.update({'u':np.zeros(self.N_INPUTS),
+                           'y':np.zeros(self.N_OUTPUTS),
+                           'x':np.zeros(2*self.O.size),
+                           'step':0})
 
     def Update(self,**kwargs):
         _u = self.state['u']
