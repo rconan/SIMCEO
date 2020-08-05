@@ -1,29 +1,31 @@
 simulation:
   sampling frequency: 2000 # [Hertz]
-  duration: 20 # [seconds]
+  duration: 30 # [seconds]
   server:
     IP: 127.0.0.1
 #    IP: 34.213.27.234
 
 drivers:
   wind_loads:
-    sampling_rate: 40 #2000/50 = 50Hz
+          #    sampling_rate: 40 #2000/50 = 50Hz
     outputs:
-      OSS_TopEnd_6F:
-        lien: [FEM,OSS_TopEnd_6F]
-      OSS_Truss_6F:
-        lien: [FEM,OSS_Truss_6F]
-      OSS_GIR_6F:
-        lien: [FEM,OSS_GIR_6F]
-      OSS_CRING_6F:
-        lien: [FEM,OSS_CRING_6F]
+            #OSS_TopEnd_6F:
+              #  lien: [FEM,OSS_TopEnd_6F]
+              #OSS_Truss_6F:
+              #lien: [FEM,OSS_Truss_6F]
+              #OSS_GIR_6F:
+              #lien: [FEM,OSS_GIR_6F]
+              #OSS_CRING_6F:
+              #lien: [FEM,OSS_CRING_6F]
       OSS_Cell_lcl_6F:
         lien: [FEM,OSS_Cell_lcl_6F]
-#      OSS_M1_lcl_6F:
-#        lien: [FEM,OSS_M1_lcl_6F]
-      MC_M2_lcl_force_6F:
-        lien: [FEM,MC_M2_lcl_force_6F]
+              #OSS_M1_lcl_6F:
+              #        logs: {decimation: 50}      
+              #lien: [FEM,OSS_M1_lcl_6F]
+              #MC_M2_lcl_force_6F:
+              #lien: [FEM,MC_M2_lcl_force_6F]
       M1_distributed_windF:
+              #logs: {decimation: 25}      
         lien: [FEM,M1_distributed_windF]
 
   FEM:
@@ -34,8 +36,8 @@ drivers:
         size: 8
       OSS_GIRDrive_F:
         size: 4
-#      OSS_M1_lcl_6F:
-#        size: 42
+      OSS_M1_lcl_6F:
+        size: 42
       OSS_Cell_lcl_6F:
         size: 42
       OSS_CRING_6F:
@@ -70,26 +72,30 @@ drivers:
       #Mount
       OSS_AzDrive_D:
         size: 8
+        logs: {decimation: 10}
       OSS_ElDrive_D:
         size: 8
+        logs: {decimation: 10}
       OSS_GIRDrive_D:
         size: 4
-      #M1  
+        logs: {decimation: 10}
+      #M1 RBM
       OSS_Hardpoint_D:
         size: 84  
       OSS_M1_lcl:
         size: 42
         logs: {decimation: 10}
-      #M2  
+      #M2 RBM
       MC_M2_lcl_6D:
         size: 42
         logs: {decimation: 10}
-      M1_S_axial_D:
-        size: 5127
-        logs: {decimation: 40}
+      #M1 surface  
+      #M1_S_axial_D:
+              #size: 5127
+        #logs: {decimation: 25}
       M1_Zernike_Coeffs:
         size: 1330
-        logs: {decimation: 40}
+        logs: {decimation: 20}
 
   MountControl:
     server: false
@@ -137,36 +143,43 @@ drivers:
         lien: [FEM, OSS_Hardpoint_D]
       M1_HP_cmd:
         size: 42
-        # lien: [M1Hardpoints, HP_F_cmd]
+        #        lien: [M1Hardpoints, HP_F_cmd]
     outputs:
       M1_HP_LC:
         size: 42
-        logs: {decimation: 1}
+#        logs: {decimation: 1}
 
   M1LocalControl:
-      sampling_rate: 1
-      server: false
-      inputs:
-        HP_LC:
-          lien: [M1HPloadcells, M1_HP_LC]
-        #Bending Modes:
-        #  lien: [AcO_controller, M1 BM]
-        #  logs: {decimation: 1}
-      split:
-        indices_or_sections: [335, 670, 1005, 1340, 1675, 2010]
-        axis: 1
-      outputs:
-        M1_Rel_F_S1:
-          size: 335
-        M1_Rel_F_S2:
-          size: 335
-        M1_Rel_F_S3:
-          size: 335
-        M1_Rel_F_S4:
-          size: 335
-        M1_Rel_F_S5:
-          size: 335
-        M1_Rel_F_S6:
-          size: 335
-        M1_Rel_F_S7:
-          size: 306
+    sampling_rate: 1
+    server: false
+    inputs:
+      HP_LC:
+        lien: [M1HPloadcells, M1_HP_LC]
+     #Bending Modes:
+     #  lien: [AcO_controller, M1 BM]
+     #  logs: {decimation: 1}
+    split:
+      indices_or_sections: [335, 670, 1005, 1340, 1675, 2010]
+      axis: 1
+    outputs:
+      M1_Rel_F_S1:
+        size: 335
+        logs: {decimation: 20}
+      M1_Rel_F_S2:
+        size: 335
+        logs: {decimation: 20}
+      M1_Rel_F_S3:
+        size: 335
+        logs: {decimation: 20}
+      M1_Rel_F_S4:
+        size: 335
+        logs: {decimation: 20}
+      M1_Rel_F_S5:
+        size: 335
+        logs: {decimation: 20}
+      M1_Rel_F_S6:
+        size: 335
+        logs: {decimation: 20}
+      M1_Rel_F_S7:
+        size: 306
+        logs: {decimation: 20}
