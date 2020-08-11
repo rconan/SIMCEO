@@ -4,6 +4,8 @@ from dos.mpc_driver import MPC
 from dos.MountController import Mount
 from dos.MountControllerMTM import MountControl
 from dos.MountControllerMTM import MountDrives
+from dos.M1HPloadcellsModel import M1HPloadcells
+from dos.M1LocalControlModel import  M1LocalControl
 from dos.source import Source
 from dos.constant import Constant
 from dos.tt7 import TT7
