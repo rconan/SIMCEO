@@ -21,6 +21,7 @@ drivers:
         lien: [FEM,OSS_M1_lcl_6F]
       MC_M2_lcl_force_6F:
         lien: [FEM,MC_M2_lcl_force_6F]
+
   FEM:
     inputs:
       OSS_AzDrive_F:
@@ -43,10 +44,22 @@ drivers:
         size: 6
       OSS_Truss_6F:
         size: 36
+      M1_actuators_segment_1:
+        lien: [M1LocalControl, M1_Rel_F_S1]
+      M1_actuators_segment_2:
+        lien: [M1LocalControl, M1_Rel_F_S2]
+      M1_actuators_segment_3:
+        lien: [M1LocalControl, M1_Rel_F_S3]
+      M1_actuators_segment_4:
+        lien: [M1LocalControl, M1_Rel_F_S4]
+      M1_actuators_segment_5:
+        lien: [M1LocalControl, M1_Rel_F_S5]
+      M1_actuators_segment_6:
+        lien: [M1LocalControl, M1_Rel_F_S6]
+      M1_actuators_segment_7:
+        lien: [M1LocalControl, M1_Rel_F_S7]
       MC_M2_lcl_force_6F:
         size: 42
-        logs:
-          decimation: 1
       MC_M2_PZT_S1_F:
         size: 6
       MC_M2_PZT_S2_F:
@@ -64,10 +77,20 @@ drivers:
     outputs:
       OSS_AzDrive_D:
         size: 8
+        logs:
+          decimation: 1
       OSS_ElDrive_D:
         size: 8
+        logs:
+          decimation: 1
       OSS_GIRDrive_D:
         size: 4
+        logs:
+          decimation: 1
+      OSS_Hardpoint_D:
+        size: 84  
+        logs:
+          decimation: 1
       OSS_M1_lcl:
         size: 42
         logs:
@@ -157,6 +180,44 @@ drivers:
          lien: [FEM, MC_M2_PZT_S6_F]
       MC_M2_PZT_S7_F:
          lien: [FEM, MC_M2_PZT_S7_F]
+  M1HPloadcells:
+    sampling_rate: 1
+    server: false
+    inputs:
+      M1_HP_D:
+        size: 84
+        lien: [FEM, OSS_Hardpoint_D]
+      M1_HP_cmd:
+        size: 42
+    outputs:
+      M1_HP_LC:
+        size: 42
+        logs:
+          decimation: 1
+  M1LocalControl:
+    sampling_rate: 1
+    server: false
+    inputs:
+      HP_LC:
+        lien: [M1HPloadcells, M1_HP_LC]
+    split:
+      indices_or_sections: [335, 670, 1005, 1340, 1675, 2010]
+      axis: 1
+    outputs:
+      M1_Rel_F_S1:
+        size: 335
+      M1_Rel_F_S2:
+        size: 335
+      M1_Rel_F_S3:
+        size: 335
+      M1_Rel_F_S4:
+        size: 335
+      M1_Rel_F_S5:
+        size: 335
+      M1_Rel_F_S6:
+        size: 335
+      M1_Rel_F_S7:
+        size: 306
 comments:
     cst:
     server: false

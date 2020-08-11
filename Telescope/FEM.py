@@ -756,7 +756,6 @@ class FEM:
         
         '''
         Starts a local CPU parallel process for logging state variables.
->>>>>>> b3e726b66c6f44e5e114a68bc9a1f0bd15605a8a
 
         Parameters:
         ----------- 
