@@ -5,46 +5,46 @@ simulation:
     IP: 127.0.0.1
 #    IP: 34.213.27.234
 drivers:
+  # Wind load driver
   wind_loads:
     outputs:
       OSS_TopEnd_6F:
-        lien: [FEM,OSS_TopEnd_6F]
+        size: 6
       OSS_Truss_6F:
-        lien: [FEM,OSS_Truss_6F]
+        size: 36
       OSS_GIR_6F:
-        lien: [FEM,OSS_GIR_6F]
+        size: 6
       OSS_CRING_6F:
-        lien: [FEM,OSS_CRING_6F]
+        size: 18
       OSS_Cell_lcl_6F:
-        lien: [FEM,OSS_Cell_lcl_6F]
+        size: 42
       OSS_M1_lcl_6F:
-        lien: [FEM,OSS_M1_lcl_6F]
+        size: 42
       MC_M2_lcl_force_6F:
-        lien: [FEM,MC_M2_lcl_force_6F]
+        size: 42
+
   # Telescope structural model
   FEM:
     # FEM INPUTS
     inputs:
       OSS_AzDrive_F:
-        size: 8
+        lien: [MountDrives,OSS_AzDrive_F]
       OSS_ElDrive_F:
-        size: 8
+        lien: [MountDrives,OSS_ElDrive_F]
       OSS_GIRDrive_F:
-        size: 4
+        lien: [MountDrives,OSS_GIRDrive_F]
       OSS_M1_lcl_6F:
-        size: 42
-        logs:
-          decimation: 1
+        lien: [wind_loads,OSS_M1_lcl_6F]
       OSS_Cell_lcl_6F:
-        size: 42
+        lien: [wind_loads,OSS_Cell_lcl_6F]
       OSS_CRING_6F:
-        size: 18
+        lien: [wind_loads,OSS_CRING_6F]
       OSS_TopEnd_6F:
-        size: 6
+        lien: [wind_loads,OSS_TopEnd_6F]
       OSS_GIR_6F:
-        size: 6
+        lien: [wind_loads,OSS_GIR_6F]
       OSS_Truss_6F:
-        size: 36
+        lien: [wind_loads,OSS_Truss_6F]
       M1_actuators_segment_1:
         lien: [M1LocalControl, M1_Rel_F_S1]
       M1_actuators_segment_2:
@@ -60,7 +60,7 @@ drivers:
       M1_actuators_segment_7:
         lien: [M1LocalControl, M1_Rel_F_S7]
       MC_M2_lcl_force_6F:
-        size: 42
+        lien: [wind_loads,MC_M2_lcl_force_6F]
       MC_M2_PZT_S1_F:
         lien: [M2PZTControl,MC_M2_PZT_S1_F]
       MC_M2_PZT_S2_F:
@@ -97,6 +97,7 @@ drivers:
       #M2 PZT
       MC_M2_PZT_S1_D:
         size: 6
+        logs: {decimation: 10}
       MC_M2_PZT_S2_D:
         size: 6
       MC_M2_PZT_S3_D:
@@ -117,24 +118,27 @@ drivers:
       # M1_Zernike_Coeffs:
       #   size: 1330
       #   logs: {decimation: 20}
-  # Mount controller & actuator model
+  # Mount controller
   MountControl:
     server: false
     inputs:
+      Mount_SP:
+        size: 3
       OSS_AzDrive_D:
         lien: [FEM,OSS_AzDrive_D]
       OSS_ElDrive_D:
-          lien: [FEM,OSS_ElDrive_D]
+        lien: [FEM,OSS_ElDrive_D]
       OSS_GIRDrive_D:
         lien: [FEM,OSS_GIRDrive_D]
     outputs:
       Mount_cmd:
-        lien: [MountDrives,Mount_cmd]
+        size: 3
+  # Mount actuators             
   MountDrives:
     server: false
     inputs:
       Mount_cmd:
-        size: 3
+        lien: [MountControl,Mount_cmd]
       OSS_AzDrive_D:
         lien: [FEM,OSS_AzDrive_D]
       OSS_ElDrive_D:
@@ -147,11 +151,11 @@ drivers:
       axis: 1
     outputs:
       OSS_AzDrive_F:
-        lien: [FEM,OSS_AzDrive_F]
+        size: 8
       OSS_ElDrive_F:
-        lien: [FEM,OSS_ElDrive_F]
+        size: 8
       OSS_GIRDrive_F:
-        lien: [FEM,OSS_GIRDrive_F]
+        size: 4
   # Tip-tilt sensor
   pseudoTTsensor:
     server: false
@@ -165,6 +169,7 @@ drivers:
       TT_fb:
         sampling_rate: 10
         size: 14
+        logs: {decimation: 1}
   # TT controller + PZTcmd transformation      
   TTDec_control:
     server: false
@@ -177,12 +182,13 @@ drivers:
       M2_PZT_cmd:
         sampling_rate: 10
         size: 21
+        logs: {decimation: 1}
   # M2 PZT Controller
   M2PZTControl:
     server: false
     inputs:
       M2_PZT_SP:
-        lien: [TT_control,M2_PZT_cmd]
+        lien: [TTDec_control,M2_PZT_cmd]
       PZT_S1_FB:
         lien: [FEM,MC_M2_PZT_S1_D]
       PZT_S2_FB:

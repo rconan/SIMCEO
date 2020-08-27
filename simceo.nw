@@ -1730,23 +1730,26 @@ def output(self,step):
     if step>=self.delay:
         a = 0
         b = 0
-        data = self.system.output().reshape(self.shape)
-        self.logger.debug('Output shape: %s', data.shape)
-        self.logger.debug('Splitting output: %s',self.split)
-        data = np.split( data , **self.split)
-        for k,v in self.outputs.items():
-            if (step-self.delay)%v.sampling_rate==0:
-                self.logger.debug('Outputing %s [%s]!',k,data[0].shape)
-                v.data[...] = data.pop(0).reshape(v.size)
-                """
-                b = a + v.data.size
-                self.logger.debug('%s [%s]: [%d,%d]',k,v.size,a,b)
-                v.data[...] = self.system.output()[0,a:b].reshape(v.size)
-                a = b
-                """
-                if v.logs is not None and (step-self.delay)%v.logs.decimation==0:
-                    self.logger.debug('LOGGING')
-                    v.logs.add(v.data.copy())
+        try:
+            data = self.system.output().reshape(self.shape)
+            self.logger.debug('Output shape: %s', data.shape)
+            self.logger.debug('Splitting output: %s',self.split)
+            data = np.split( data , **self.split)
+            for k,v in self.outputs.items():
+                if (step-self.delay)%v.sampling_rate==0:
+                    self.logger.debug('Outputing %s [%s]!',k,data[0].shape)
+                    v.data[...] = data.pop(0).reshape(v.size)
+                    """
+                    b = a + v.data.size
+                    self.logger.debug('%s [%s]: [%d,%d]',k,v.size,a,b)
+                    v.data[...] = self.system.output()[0,a:b].reshape(v.size)
+                    a = b
+                    """
+                    if v.logs is not None and (step-self.delay)%v.logs.decimation==0:
+                        self.logger.debug('LOGGING')
+                        v.logs.add(v.data.copy())
+        except AttributeError:
+            self.logger.debug("No outputs")                
 
 
 def terminate(self):
@@ -1980,7 +1983,7 @@ def diagram(self,**kwargs):
         if t<1:
             return '{:.1f}ms'.format(t*1e3)
         else:
-            return '{:.1f}s'.format(t)
+            return '{:.3f}s'.format(t)
 
     main = Digraph(format='png', node_attr={'shape': 'plaintext'})
 
@@ -2016,8 +2019,9 @@ def diagram(self,**kwargs):
                 for ik in self.drivers[d].inputs:
                     data = self.drivers[d].inputs[ik]
                     if data.lien is not None:
-                        main.edge(search_method(data.lien[0],data.lien[1]),
-                                  '{0}_{1}:{1}_update'.format(str(s),d))
+                        if 'update' in m:
+                            main.edge(search_method(data.lien[0],data.lien[1]),
+                                '{0}_{1}:{1}_update'.format(str(s),d))
                 for ok in self.drivers[d].outputs:
                     data = self.drivers[d].outputs[ok]
                     if data.lien is not None:

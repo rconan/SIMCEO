@@ -8,7 +8,7 @@ class pseudoTTsensor:
         self.logger = logging.getLogger(name='pseudoTTsensor')
         self.logger.setLevel(logging.INFO)
         # Load M1/M2 to segment tip-tilt transformation matrix
-        self.D_seg_tt = np.load('../Telescope/linear_jitter.npz')['D_seg_tt']
+        self.D_seg_tt = np.load('Telescope/linear_jitter.npz')['D_seg_tt']
         # Initialize averaging counter
         self.count = 0
         self.seg_tt = np.zeros((14,1))
