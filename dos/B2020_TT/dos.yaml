@@ -170,9 +170,9 @@ drivers:
       TT_fb:
         sampling_rate: 10
         size: 14
-        logs: {decimation: 1}
+        logs: {decimation: 10}
   # TT controller + PZTcmd transformation      
-  TTDec_control:
+  TTDec_control_OAD:
     server: false
     delay: 2010
     sampling_rate: 10
@@ -183,13 +183,13 @@ drivers:
       M2_PZT_cmd:
         sampling_rate: 10
         size: 21
-        logs: {decimation: 1}
+        logs: {decimation: 10}
   # M2 PZT Controller
   FSM_control_OAD:
     server: false
     inputs:
       M2_PZT_SP:
-        lien: [TTDec_control,M2_PZT_cmd]
+        lien: [TTDec_control_OAD,M2_PZT_cmd]
       PZT_S1_FB:
         lien: [FEM,MC_M2_PZT_S1_D]
       PZT_S2_FB:
