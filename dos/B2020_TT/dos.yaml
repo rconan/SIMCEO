@@ -62,19 +62,19 @@ drivers:
       MC_M2_lcl_force_6F:
         lien: [wind_loads,MC_M2_lcl_force_6F]
       MC_M2_PZT_S1_F:
-        lien: [M2PZTControl,MC_M2_PZT_S1_F]
+        lien: [FSM_control_OAD,MC_M2_PZT_S1_F]
       MC_M2_PZT_S2_F:
-        lien: [M2PZTControl,MC_M2_PZT_S2_F]
+        lien: [FSM_control_OAD,MC_M2_PZT_S2_F]
       MC_M2_PZT_S3_F:
-        lien: [M2PZTControl,MC_M2_PZT_S3_F]
+        lien: [FSM_control_OAD,MC_M2_PZT_S3_F]
       MC_M2_PZT_S4_F:
-        lien: [M2PZTControl,MC_M2_PZT_S4_F]
+        lien: [FSM_control_OAD,MC_M2_PZT_S4_F]
       MC_M2_PZT_S5_F:
-        lien: [M2PZTControl,MC_M2_PZT_S5_F]
+        lien: [FSM_control_OAD,MC_M2_PZT_S5_F]
       MC_M2_PZT_S6_F:
-        lien: [M2PZTControl,MC_M2_PZT_S6_F]
+        lien: [FSM_control_OAD,MC_M2_PZT_S6_F]
       MC_M2_PZT_S7_F:
-        lien: [M2PZTControl,MC_M2_PZT_S7_F]
+        lien: [FSM_control_OAD,MC_M2_PZT_S7_F]
     # FEM OUTPUTS
     outputs:
       #Mount
@@ -110,6 +110,7 @@ drivers:
         size: 6
       MC_M2_PZT_S7_D:
         size: 6
+        logs: {decimation: 10}
       #M2 RBM (Local CS)  
       MC_M2_lcl_6D:
         size: 42
@@ -184,7 +185,7 @@ drivers:
         size: 21
         logs: {decimation: 1}
   # M2 PZT Controller
-  M2PZTControl:
+  FSM_control_OAD:
     server: false
     inputs:
       M2_PZT_SP:
@@ -234,8 +235,6 @@ drivers:
     outputs:
       M1_HP_LC:
         size: 42
-        logs:
-          decimation: 1
   # M1 local controller
   M1LocalControl:
     sampling_rate: 1
