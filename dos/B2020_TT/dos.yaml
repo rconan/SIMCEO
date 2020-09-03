@@ -97,7 +97,7 @@ drivers:
       #M2 PZT
       MC_M2_PZT_S1_D:
         size: 6
-        logs: {decimation: 10}
+      #  logs: {decimation: 10}
       MC_M2_PZT_S2_D:
         size: 6
       MC_M2_PZT_S3_D:
@@ -110,7 +110,7 @@ drivers:
         size: 6
       MC_M2_PZT_S7_D:
         size: 6
-        logs: {decimation: 10}
+      #  logs: {decimation: 10}
       #M2 RBM (Local CS)  
       MC_M2_lcl_6D:
         size: 42
@@ -120,26 +120,50 @@ drivers:
       #   size: 1330
       #   logs: {decimation: 20}
   # Mount controller
-  MountControl:
+  AZ_fb_ssC:
     server: false
+    sampling_rate: 10
     inputs:
-      Mount_SP:
-        size: 3
+      Az_SP:
+        size: 1
       OSS_AzDrive_D:
         lien: [FEM,OSS_AzDrive_D]
+    outputs:
+      Az_Drive_cmd:
+        size: 1
+  EL_fb_ssC:
+    server: false
+    sampling_rate: 10
+    inputs:
+      El_SP:
+        size: 1
       OSS_ElDrive_D:
         lien: [FEM,OSS_ElDrive_D]
+    outputs:
+      El_Drive_cmd:
+        size: 1
+  GIR_fb_ssC:
+    server: false
+    sampling_rate: 10
+    inputs:
+      GIR_SP:
+        size: 1
       OSS_GIRDrive_D:
         lien: [FEM,OSS_GIRDrive_D]
     outputs:
-      Mount_cmd:
-        size: 3
-  # Mount actuators             
+      GIR_Drive_cmd:
+        size: 1
+
+  # Mount drive (actuators)
   MountDrives:
     server: false
     inputs:
-      Mount_cmd:
-        lien: [MountControl,Mount_cmd]
+      AZ_cmd:
+        lien: [AZ_fb_ssC,Az_Drive_cmd]
+      EL_cmd:
+        lien: [EL_fb_ssC,El_Drive_cmd]
+      GIR_cmd:
+        lien: [GIR_fb_ssC,GIR_Drive_cmd]
       OSS_AzDrive_D:
         lien: [FEM,OSS_AzDrive_D]
       OSS_ElDrive_D:
