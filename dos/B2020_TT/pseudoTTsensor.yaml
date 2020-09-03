@@ -1,1 +1,2 @@
-pseudoTTsensor: {}
+pseudoTTsensor:
+  TTdelay: 12
