@@ -16,9 +16,10 @@ slprj
 etc/gmto*
 sandbox
 *.npy
+*.r2016a
 *.r2017a
-*.r2018a
-*.r2018b
+#*.r2018a
+#*.r2018b
 *.el
 *.npz
 *.bak
@@ -27,7 +28,7 @@ sandbox
 *.png
 *.svg
 *.zip
-/M1
+timing
 
 # Generated from make server
 etc
@@ -42,9 +43,10 @@ simceo_refman.pdf
 simceo_refman.toc
 simceo.tex
 
-timing
+
+# RR local stuff
 simceo.code-workspace
 testDT
 SHAcO_qp.pickle
 old_notebooks
-
+m1s*_bm_shapes.mat
