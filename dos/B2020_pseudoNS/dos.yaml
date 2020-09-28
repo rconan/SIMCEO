@@ -1,0 +1,390 @@
+simulation:
+  sampling frequency: 2000 # [Hertz]
+  duration: 40 # [seconds]
+  server:
+    IP: 127.0.0.1
+#    IP: 34.213.27.234
+drivers:
+  # Wind load driver
+  wind_loads:
+    outputs:
+      OSS_TopEnd_6F:
+        size: 6
+      OSS_Truss_6F:
+        size: 36
+      OSS_GIR_6F:
+        size: 6
+      OSS_CRING_6F:
+        size: 18
+      OSS_Cell_lcl_6F:
+        size: 42
+      OSS_M1_lcl_6F:
+        size: 42
+      MC_M2_lcl_force_6F:
+        size: 42
+
+  # Telescope structural model
+  FEM:
+    # FEM INPUTS
+    inputs:
+      OSS_AzDrive_F:
+        lien: [MountDrives,OSS_AzDrive_F]
+      OSS_ElDrive_F:
+        lien: [MountDrives,OSS_ElDrive_F]
+      OSS_GIRDrive_F:
+        lien: [MountDrives,OSS_GIRDrive_F]
+      OSS_M1_lcl_6F:
+        lien: [wind_loads,OSS_M1_lcl_6F]
+      OSS_Cell_lcl_6F:
+        lien: [wind_loads,OSS_Cell_lcl_6F]
+      OSS_CRING_6F:
+        lien: [wind_loads,OSS_CRING_6F]
+      OSS_TopEnd_6F:
+        lien: [wind_loads,OSS_TopEnd_6F]
+      OSS_GIR_6F:
+        lien: [wind_loads,OSS_GIR_6F]
+      OSS_Truss_6F:
+        lien: [wind_loads,OSS_Truss_6F]
+      OSS_Harpoint_delta_F:
+        lien: [M1hardpointsModel,HP_F_cmd]
+      M1_actuators_segment_1:
+        lien: [M1LocalControlwBM, M1_Rel_F_S1]
+      M1_actuators_segment_2:
+        lien: [M1LocalControlwBM, M1_Rel_F_S2]
+      M1_actuators_segment_3:
+        lien: [M1LocalControlwBM, M1_Rel_F_S3]
+      M1_actuators_segment_4:
+        lien: [M1LocalControlwBM, M1_Rel_F_S4]
+      M1_actuators_segment_5:
+        lien: [M1LocalControlwBM, M1_Rel_F_S5]
+      M1_actuators_segment_6:
+        lien: [M1LocalControlwBM, M1_Rel_F_S6]
+      M1_actuators_segment_7:
+        lien: [M1LocalControlwBM, M1_Rel_F_S7]
+      MC_M2_lcl_force_6F:
+        lien: [wind_loads,MC_M2_lcl_force_6F]
+      MC_M2_PZT_S1_F:
+        lien: [FSM_control_OAD,MC_M2_PZT_S1_F]
+      MC_M2_PZT_S2_F:
+        lien: [FSM_control_OAD,MC_M2_PZT_S2_F]
+      MC_M2_PZT_S3_F:
+        lien: [FSM_control_OAD,MC_M2_PZT_S3_F]
+      MC_M2_PZT_S4_F:
+        lien: [FSM_control_OAD,MC_M2_PZT_S4_F]
+      MC_M2_PZT_S5_F:
+        lien: [FSM_control_OAD,MC_M2_PZT_S5_F]
+      MC_M2_PZT_S6_F:
+        lien: [FSM_control_OAD,MC_M2_PZT_S6_F]
+      MC_M2_PZT_S7_F:
+        lien: [FSM_control_OAD,MC_M2_PZT_S7_F]
+    # FEM OUTPUTS
+    outputs:
+      #Mount
+      OSS_AzDrive_D:
+        size: 8
+        logs: {decimation: 10}
+      OSS_ElDrive_D:
+        size: 8
+        logs: {decimation: 10}
+      OSS_GIRDrive_D:
+        size: 4
+        logs: {decimation: 10}
+      #M1 HP
+      OSS_Hardpoint_D:
+        size: 84  
+      #M1 RBM (Local CS)
+      OSS_M1_lcl:
+        size: 42
+        logs: {decimation: 10}
+      #M2 PZT
+      MC_M2_PZT_S1_D:
+        size: 6
+      MC_M2_PZT_S2_D:
+        size: 6
+      MC_M2_PZT_S3_D:
+        size: 6
+      MC_M2_PZT_S4_D:
+        size: 6
+      MC_M2_PZT_S5_D:
+        size: 6
+      MC_M2_PZT_S6_D:
+        size: 6
+      MC_M2_PZT_S7_D:
+        size: 6
+      #M2 RBM (Local CS)  
+      MC_M2_lcl_6D:
+        size: 42
+        logs: {decimation: 10}
+      #M1 surface
+      M1_FIG_MODES:
+        size: 189 #7*27BMs
+        #   logs: {decimation: 20}
+      # M1_Zernike_Coeffs:
+      #   size: 1330
+  # Mount controller
+  AZ_fb_ssC:
+    server: false
+    sampling_rate: 10
+    inputs:
+      Az_SP:
+        size: 1
+      OSS_AzDrive_D:
+        lien: [FEM,OSS_AzDrive_D]
+    outputs:
+      Az_Drive_cmd:
+        size: 1
+  EL_fb_ssC:
+    server: false
+    sampling_rate: 10
+    inputs:
+      El_SP:
+        size: 1
+      OSS_ElDrive_D:
+        lien: [FEM,OSS_ElDrive_D]
+    outputs:
+      El_Drive_cmd:
+        size: 1
+  GIR_fb_ssC:
+    server: false
+    sampling_rate: 10
+    inputs:
+      GIR_SP:
+        size: 1
+      OSS_GIRDrive_D:
+        lien: [FEM,OSS_GIRDrive_D]
+    outputs:
+      GIR_Drive_cmd:
+        size: 1
+
+  # Mount drive (actuators)
+  MountDrives:
+    server: false
+    inputs:
+      AZ_cmd:
+        lien: [AZ_fb_ssC,Az_Drive_cmd]
+      EL_cmd:
+        lien: [EL_fb_ssC,El_Drive_cmd]
+      GIR_cmd:
+        lien: [GIR_fb_ssC,GIR_Drive_cmd]
+      OSS_AzDrive_D:
+        lien: [FEM,OSS_AzDrive_D]
+      OSS_ElDrive_D:
+          lien: [FEM,OSS_ElDrive_D]
+      OSS_GIRDrive_D:
+        lien: [FEM,OSS_GIRDrive_D]
+    shape: [1,20]
+    split:
+      indices_or_sections: [8,16]
+      axis: 1
+    outputs:
+      OSS_AzDrive_F:
+        size: 8
+      OSS_ElDrive_F:
+        size: 8
+      OSS_GIRDrive_F:
+        size: 4
+
+  # Tip-tilt sensor
+  pseudoTTsensor:
+    server: false
+    #delay: 0
+    inputs:
+      M1_RBM:
+        lien: [FEM,OSS_M1_lcl]
+      M2_RBM:
+        lien: [FEM,MC_M2_lcl_6D]
+    outputs:
+      TT_fb:
+        sampling_rate: 10
+        size: 14
+        logs: {decimation: 10}
+
+  # TT controller + PZTcmd transformation      
+  TTDec_control_OAD:
+    server: false
+    delay: 10 # Sampling frequency/TTcontrol rate 
+    sampling_rate: 10
+    inputs:
+      segments tip-tilt:
+        lien: [pseudoTTsensor,TT_fb]
+    outputs:
+      M2_PZT_cmd:
+        sampling_rate: 10
+        size: 21
+        logs: {decimation: 10}
+
+  # AcO sensor+reconstructor linear model
+  pseudoWFsensor:
+    server: false
+    delay: 2000
+    inputs:
+      M1_RBM:
+        lien: [FEM,OSS_M1_lcl]
+      M2_RBM:
+        lien: [FEM,MC_M2_lcl_6D]
+      M1_FIG_MODES:
+        lien: [FEM,M1_FIG_MODES]  
+    outputs:
+      AcO_fb:
+        sampling_rate: 20000   # x = 20000 = 10s/5e-4s = desired T/SIMCEO period
+        size: 273
+        # logs: {decimation: 20}
+
+  # AcO controller
+  AcO_control:
+    server: false
+    delay: 22000 # (pseudoWFsensor delay + Aco_fb sampling-rate)
+    sampling_rate: 20000
+    inputs:
+      # c_hat
+      AcO_residual_cmd:
+        lien: [pseudoWFsensor,AcO_fb]
+      split:
+      indices_or_sections: [42, 84]
+      axis: 1  
+    outputs:
+      M1_RBM_cmd:
+        sampling_rate: 20000
+        size: 42
+        # logs: {decimation: 10}
+      M2_RBM_cmd:
+        sampling_rate: 20000
+        size: 42
+        # logs: {decimation: 10}
+      M1_BM_cmd:
+        sampling_rate: 20000
+        size: 189 # 7*27
+        # logs: {decimation: 10}
+
+  # M2 PZT Controller
+  FSM_control_OAD:
+    server: false
+    inputs:
+      M2_PZT_SP:
+        lien: [TTDec_control_OAD,M2_PZT_cmd]
+      PZT_S1_FB:
+        lien: [FEM,MC_M2_PZT_S1_D]
+      PZT_S2_FB:
+        lien: [FEM,MC_M2_PZT_S2_D]
+      PZT_S3_FB:
+        lien: [FEM,MC_M2_PZT_S3_D]
+      PZT_S4_FB:
+        lien: [FEM,MC_M2_PZT_S4_D]
+      PZT_S5_FB:
+        lien: [FEM,MC_M2_PZT_S5_D]
+      PZT_S6_FB:
+        lien: [FEM,MC_M2_PZT_S6_D]
+      PZT_S7_FB:
+        lien: [FEM,MC_M2_PZT_S7_D]
+    split:
+      indices_or_sections: [6, 12, 18, 24, 30, 36]
+      axis: 1
+    outputs:
+      MC_M2_PZT_S1_F:
+        size: 6
+      MC_M2_PZT_S2_F:
+        size: 6
+      MC_M2_PZT_S3_F:
+        size: 6
+      MC_M2_PZT_S4_F:
+        size: 6
+      MC_M2_PZT_S5_F:
+        size: 6
+      MC_M2_PZT_S6_F:
+        size: 6
+      MC_M2_PZT_S7_F:
+        size: 6
+
+  # M2 Positioner dynamics
+  M2Pos_adhoc_DynModel:
+    server: false
+    sampling_rate: 1
+    inputs:
+      M2_RBM_cmd:        
+        lien: [AcO_control,M2_RBM_cmd]
+    outputs:
+      M2Pos_RBM:
+        size: 42
+
+
+  # M1 HP load cell model
+  M1HPloadcells:
+    sampling_rate: 1
+    server: false
+    inputs:
+      M1_HP_D:
+        lien: [FEM, OSS_Hardpoint_D]
+      M1_HP_cmd:
+        lien: [M1hardpointsModel,HP_F_cmd]
+    outputs:
+      M1_HP_LC:
+        size: 42
+  
+  # M1 HP dynamics model
+  M1hardpointsModel:
+    sampling_rate: 1
+    server: false
+    inputs:
+      M1_RBM_cmd:
+        lien: [AcO_control,M1_RBM_cmd]
+    outputs:
+      HP_F_cmd:
+        size: 42
+
+  # M1 local controller with BM inputs
+  M1LocalControlwBM:
+    sampling_rate: 1
+    server: false
+    inputs:
+      HP_LC:
+        lien: [M1HPloadcells, M1_HP_LC]
+      M1_BM_cmd:
+        lien: [AcO_control,M1_BM_cmd]         
+    split:
+      indices_or_sections: [335, 670, 1005, 1340, 1675, 2010]
+      axis: 1
+    outputs:
+      M1_Rel_F_S1:
+        size: 335
+      M1_Rel_F_S2:
+        size: 335
+      M1_Rel_F_S3:
+        size: 335
+      M1_Rel_F_S4:
+        size: 335
+      M1_Rel_F_S5:
+        size: 335
+      M1_Rel_F_S6:
+        size: 335
+      M1_Rel_F_S7:
+        size: 306
+
+comments:
+
+  # M1 local controller (without BM commands input)
+  M1LocalControl:
+    sampling_rate: 1
+    server: false
+    inputs:
+      HP_LC:
+        lien: [M1HPloadcells, M1_HP_LC] 
+    split:
+      indices_or_sections: [335, 670, 1005, 1340, 1675, 2010]
+      axis: 1
+    outputs:
+      M1_Rel_F_S1:
+        size: 335
+      M1_Rel_F_S2:
+        size: 335
+      M1_Rel_F_S3:
+        size: 335
+      M1_Rel_F_S4:
+        size: 335
+      M1_Rel_F_S5:
+        size: 335
+      M1_Rel_F_S6:
+        size: 335
+      M1_Rel_F_S7:
+        size: 306
+
+      

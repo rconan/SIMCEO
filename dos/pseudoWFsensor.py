@@ -9,13 +9,13 @@ class pseudoWFsensor:
         self.logger = logging.getLogger(name='pseudoWFsensor')
         self.logger.setLevel(logging.INFO)
         # Load M1/M2 to WFS slopes transformation matrix
-        self.Dwfs = np.load('Telescope/lom_aco.npz')['Dwfs']
+        self.RacoDwfs = np.load('Telescope/lom_aco.npz')['R_times_D']
         
         # Initialize averaging counter
         self.count = 0
 
-        self.wfs = np.zeros((self.Dwfs.shape[0],1))
-        self.__yout = np.zeros_like(self.wfs)
+        self.c_hat = np.zeros((self.RacoDwfs.shape[0],1))
+        self.__yout = np.zeros_like(self.c_hat)
 
     def init(self):
         pass
@@ -24,15 +24,15 @@ class pseudoWFsensor:
         self.logger.debug(f"u: {u.shape}")
         
         # Integrate tip-tilt measurement (no sensor delay)
-        self.wfs += self.Dwfs @ u.T
+        self.c_hat += self.RacoDwfs @ u.T
         
-        #print(f"WFS: {np.array_str(self.wfs,precision=2,suppress_small=True)}")          
+        #print(f"Residual c: {np.array_str(self.c_hat, precision=2, suppress_small=True)}")          
         self.count += 1
         
 
     def output(self):
-        #print(np.array_str(self.seg_tt/self.count ,precision=1,suppress_small=True))
-        self.__yout[...] = self.wfs/self.count
-        self.wfs[...] = 0.0
+        #print(np.array_str(self.c_hat/self.count, precision=1, suppress_small=True))
+        self.__yout[...] = self.c_hat/self.count
+        self.c_hat[...] = 0.0
         self.count = 0
         return np.atleast_2d(self.__yout.T.ravel())

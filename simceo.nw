@@ -1766,10 +1766,12 @@ from dos import control
 from CythonDrivers import MountControl
 from CythonDrivers import MountDrives
 from CythonDrivers import M1HPloadcells
+from CythonDrivers import M1hardpointsModel
 from CythonDrivers import M1LocalControl
 from CythonDrivers import M2PZTControl
 from .sh_aco_qp_driver import SHAcO_qp
 from .pseudoTTsensor import pseudoTTsensor
+from .pseudoWFsensor import pseudoWFsensor
 from dos.source import Source
 import numpy as np
 class System:
@@ -1805,6 +1807,7 @@ The folder [[CythonDrivers]] has the client drivers generated through a cythoniz
 from .MountControl import MountControl
 from .MountDrives import MountDrives
 from .M1HPloadcells import M1HPloadcells
+from .M1hardpointsModel import M1hardpointsModel
 from .M1LocalControl import M1LocalControl
 from .M2PZTControl import M2PZTControl
 @
