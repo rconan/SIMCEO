@@ -192,7 +192,7 @@ drivers:
       M1_RBM:
         lien: [FEM,OSS_M1_lcl]
       M2_RBM:
-        lien: [FEM,MC_M2_lcl_6D]
+        lien: [add_M2_Pos_FEM,M2_RBM]
     outputs:
       TT_fb:
         sampling_rate: 10
@@ -221,7 +221,7 @@ drivers:
       M1_RBM:
         lien: [FEM,OSS_M1_lcl]
       M2_RBM:
-        lien: [FEM,MC_M2_lcl_6D]
+        lien: [add_M2_Pos_FEM,M2_RBM]
       M1_FIG_MODES:
         lien: [FEM,M1_FIG_MODES]  
     outputs:
@@ -239,7 +239,7 @@ drivers:
       # c_hat
       AcO_residual_cmd:
         lien: [pseudoWFsensor,AcO_fb]
-      split:
+    split:
       indices_or_sections: [42, 84]
       axis: 1  
     outputs:
@@ -306,6 +306,18 @@ drivers:
       M2Pos_RBM:
         size: 42
 
+  # Driver to sum M2 RBM from FEM and M2Pos
+  add_M2_Pos_FEM:
+    sampling_rate: 1
+    server: false
+    inputs:
+      M2Pos:
+        lien: [M2Pos_adhoc_DynModel,M2Pos_RBM]
+      FEM_M2_RBM:
+        lien: [FEM,MC_M2_lcl_6D]
+    outputs:
+      M2_RBM:
+        size: 42
 
   # M1 HP load cell model
   M1HPloadcells:
