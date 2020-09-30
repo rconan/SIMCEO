@@ -50,3 +50,7 @@ testDT
 SHAcO_qp.pickle
 old_notebooks
 m1s*_bm_shapes.mat
+.vscode
+
+# Large files
+add_AcO_F.pickle
