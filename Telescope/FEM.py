@@ -705,7 +705,7 @@ class FEM:
                            'y':np.zeros(self.N_OUTPUTS),
                            'A':A,'B':B,'C':C,'D':None,
                            'x':np.zeros(A.shape[1]),
-                           'step':0})        
+                           'step':0})
         # Initializing GPU state space
         if CUDA_LIBRARY:
             self._initialize_gpu_env()
@@ -718,6 +718,11 @@ class FEM:
         
         self.logger.info('      RUNNING SIMULATION...')
 
+    def reset_state(self):
+        self.state.update({'u':np.zeros(self.N_INPUTS),
+                           'y':np.zeros(self.N_OUTPUTS),
+                           'x':np.zeros(2*self.O.size),
+                           'step':0})
 
     def _initialize_gpu_env(self, var_type=np.float64):
 
