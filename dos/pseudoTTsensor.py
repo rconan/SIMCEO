@@ -16,11 +16,17 @@ class pseudoTTsensor:
         self.seg_tt = np.zeros((14,1))
         self.__yout = np.zeros_like(self.seg_tt)
 
-        queueSize = 12
+        try:
+            self.queueSize = kwargs['TTdelay']
+        except:
+            self.queueSize = 12
+        self.logger.info("TT sensor delay: %d", self.queueSize)
+
+
         #Instantiate TT queue
-        self.TTqueue = queue.Queue(queueSize)
+        self.TTqueue = queue.Queue(self.queueSize)
         #Initialize TT queue
-        for _ in range(queueSize):
+        for _ in range(self.queueSize):
             self.TTqueue.put(np.zeros_like(self.seg_tt))
 
     def init(self):
@@ -28,12 +34,17 @@ class pseudoTTsensor:
 
     def update(self,u):
         self.logger.debug(f"u: {u.shape}")
-        # Average tip-tilt delayed measurement
-        self.seg_tt += self.TTqueue.get()
+        if(self.queueSize > 0):
+            # Integrate tip-tilt delayed measurement
+            self.seg_tt += self.TTqueue.get()
+            # Save new TT sample into the 
+            self.TTqueue.put(self.D_seg_tt @ u.T)
+        else:
+            # Integrate tip-tilt measurement (no sensor delay)
+            self.seg_tt += self.D_seg_tt @ u.T
         #print(f"seg_tt: {np.array_str(self.seg_tt*1e6,precision=1,suppress_small=True)}")          
         self.count += 1
-        # Save new TT sample into the 
-        self.TTqueue.put(self.D_seg_tt @ u.T)
+        
 
     def output(self):
         #print(np.array_str(self.seg_tt/self.count ,precision=1,suppress_small=True))
