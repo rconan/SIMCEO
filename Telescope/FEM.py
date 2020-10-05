@@ -282,6 +282,7 @@ class FEM:
         self.P = {'OSS_M1_lcl':Q,'MC_M2_lcl_6D':Q}
         for k in self.P:
             self.__Phi__[k] = self.P[k]@self.__Phi__[k]
+            self.logger.info('- Reordering outputs of %s'%k)
 
     def info(self):
         self.logger.info('FEM synopsis:')

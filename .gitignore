@@ -52,9 +52,8 @@ ReconstructorM.pickle
 ES2M1RBM.pickle
 timing
 simceo.code-workspace
+Telescope/FEM_raw.py
 testDT
-SHAcO_qp.pickle
-SHAcO.pickle
 simceo_refman.toc
 dos/SHWFS_ES_M1S7Rzissue
 old_notebooks
@@ -62,4 +61,5 @@ m1s*_bm_shapes.mat
 .vscode
 
 # Large files
+SHAcO_qp.pickle
 add_AcO_F.pickle

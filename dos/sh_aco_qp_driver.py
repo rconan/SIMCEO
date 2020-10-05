@@ -19,20 +19,32 @@ class SHAcO_qp:
             n_bm = ((D.shape[1])//7) - 12
             self.mount_included = True
         else:
-            self.logger.error('Unable to get the correct number of bending modes. Check Dsh!')
+            self.logger.error('Unable to get the correct number of bending modes. Check D!')
+
+        # - - - Probe mean slope removal matrix Rs (but retains the overall contribution)
+        O = np.kron(np.eye(6),np.ones((48*48,1)))
+        V_pr = np.zeros((D.shape[0],6))
+        for iv in range(6):
+            V_pr[:,iv] = np.hstack([*[O[MaskSeg.ravel(),iv] for MaskSeg in wfsMask]])
+        Lambda_pr = np.diag(1/np.sum(V_pr,axis=0))
+        
+        R_g = np.kron(np.eye(2),np.array([[1,1,1]]).T)
+        Lambda_g = np.diag(1/np.sum(V_pr@R_g,axis=0))
+        Rs = np.eye(D.shape[0]) - (V_pr @ (Lambda_pr - R_g@Lambda_g@R_g.T) @ V_pr.T)
 
         # W1 can be used to remove mean slopes
-        if 'W1' in kwargs.keys():
-            self.W1 = kwargs['W1']
-        else:
-            self.W1 = np.eye(D.shape[0])
+        self.W1 = np.eye(D.shape[0])
+        if 'Cs' in kwargs.keys():
+            self.W1 = kwargs['Cs']
+        if kwargs['rm_mean_slopes']:
+            self.W1 = Rs.T.dot(self.W1).dot(Rs)
         self.DT_W1_D = D.T.dot(self.W1).dot(D)
         self.W1_D = self.W1.dot(D)
 
         # It is assumed that W3 incorporates the Tu transformation effect
-        self.W2, self.W3, self.rho3, self.k = W2, W3, 1e-3, K
+        self.W2, self.W3, self.rho3, self.k_I = W2, W3, 1e-3, K
         self.wfsMask = wfsMask
-
+        # Constraints
         self.umin = umin
         self.umax = umax
 
@@ -50,17 +62,17 @@ class SHAcO_qp:
             self.J1_J3_ratio = 10
 
         self.__u = np.zeros(0)
-        self.logger.debug(' * * * Initializing! * * * ')
+        self.logger.info(' * * * Initializing AcO QP-based algorithm! * * * ')
 
         # Reconstructor dimensions
         self.nc = D.shape[1]
 
         # QP reconstructor matrices
-        P = sparse.csc_matrix(self.DT_W1_D+ self.W2+ self.rho3*(self.k**2)*self.W3)
+        P = sparse.csc_matrix(self.DT_W1_D+ self.W2+ self.rho3*(self.k_I**2)*self.W3)
         
         # Inequality constraint matrix: lb <= Ain*u <= ub
         self.Ain = sparse.csc_matrix(   # Remove S7Rz from _Tu
-            -np.delete(self._Tu,[self.n_c_oa+5,self.n_c_oa+11], axis=1)*self.k) 
+            -np.delete(self._Tu,[self.n_c_oa+5,self.n_c_oa+11], axis=1)*self.k_I) 
              
         # Create an OSQP object as global
         self.qpp = osqp.OSQP()
@@ -83,7 +95,7 @@ class SHAcO_qp:
         # Remove S7-Rz
         u_ant = np.delete(self.__u,[self.n_c_oa+5,self.n_c_oa+11])
         # Update linear QP term
-        q = -y_valid.T.dot(self.W1_D) - self.rho3*u_ant.T.dot(self.W3)*self.k
+        q = -y_valid.T.dot(self.W1_D) - self.rho3*u_ant.T.dot(self.W3)*self.k_I
         
         # Update bounds to inequality constraints
         _Tu_u_ant = self._Tu.dot(self.__u)
@@ -103,7 +115,7 @@ class SHAcO_qp:
         
         epsilon = y_valid - self.DwS7Rz.dot(c_hat)
         J1 = epsilon.T.dot(self.W1).dot(epsilon)
-        delta = np.delete(self.k*c_hat - self.__u,[self.n_c_oa+5,self.n_c_oa+11])
+        delta = np.delete(self.k_I*c_hat - self.__u,[self.n_c_oa+5,self.n_c_oa+11])
         J3 = delta.T.dot(self.W3).dot(delta)
 
         # J3 is zero if delta is also zero -> no need for the 2nd step
@@ -117,8 +129,8 @@ class SHAcO_qp:
             # Update J3 weight
             self.rho3 = max((J1/(self.J1_J3_ratio*J3)),1.0e-6)
             # Update QP object and solve problem - 2nd step
-            P = sparse.csc_matrix(self.DT_W1_D+ self.W2+ self.rho3*(self.k**2)*self.W3)
-            q = -y_valid.T.dot(self.W1_D) - self.rho3*u_ant.T.dot(self.W3)*self.k
+            P = sparse.csc_matrix(self.DT_W1_D+ self.W2+ self.rho3*(self.k_I**2)*self.W3)
+            q = -y_valid.T.dot(self.W1_D) - self.rho3*u_ant.T.dot(self.W3)*self.k_I
             self.qpp.update(q=q)
             self.qpp.update(Px=sparse.triu(P).data)
             # Solve QP - 2nd Step
@@ -133,14 +145,14 @@ class SHAcO_qp:
 
             epsilon = y_valid - self.DwS7Rz.dot(c_hat)
             J1 = epsilon.T.dot(self.W1).dot(epsilon)
-            delta = np.delete(self.k*c_hat - self.__u,[self.n_c_oa+5,self.n_c_oa+11])
+            delta = np.delete(self.k_I*c_hat - self.__u,[self.n_c_oa+5,self.n_c_oa+11])
             J3 = delta.T.dot(self.W3).dot(delta)
             
             self.logger.info('2nd> J1:%0.3g, J3:%0.3g, ratio:%0.3g, rho3:%0.3g' %(J1,J3,J1/(self.rho3*J3),self.rho3))
             
 
         # Integral controller
-        self.__u = self.__u -self.k*c_hat
+        self.__u = self.__u -self.k_I*c_hat
 
         # Clip the control signal to the saturation limits [umin,umax] - Should not be necessary if using QP
         if not (empty(self.umin) and empty(self.umax)):

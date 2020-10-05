@@ -1,0 +1,3 @@
+This folder provides a SIMCEO simulation that reproduces the Natural Seeing (NS) observation mode. In this mode, we consider the fast TT and the AcO control loops. The mount, M1 Force, and the M2 FSM (PZT) control are also implemented. Here, ...
+
+As in the folder `B2020_pseudoNS`, there are to tuning options: `OAD` and `dev`. In the first, the M2 PZT and TT controllers (`TTDec_control_OAD.yaml` and `FSM_control_OAD.yaml`, respectively) are based on simple integral action to met OAD requirements. The second option employs more sophisticated controllers as described in the FSMS Study report authored by P. Thompson.
