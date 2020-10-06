@@ -5,7 +5,7 @@ import queue
 logging.basicConfig()
 
 class pseudoTTsensor:
-    def __init__(self):
+    def __init__(self,**kwargs):
         self.logger = logging.getLogger(name='pseudoTTsensor')
         self.logger.setLevel(logging.INFO)
         # Load M1/M2 to segment tip-tilt transformation matrix
