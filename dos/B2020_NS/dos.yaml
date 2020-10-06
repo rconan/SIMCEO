@@ -191,10 +191,14 @@ drivers:
     server: false
     #delay: 0
     inputs:
-      M1_RBM:
-        lien: [FEM,OSS_M1_lcl]
-      M2_RBM:
-        lien: [add_M2_Pos_FEM,M2_RBM]
+      M1_Txyz:
+        lien: ['M1RBM_splitter','M1_Txyz']
+      M1_Rxyz:
+        lien: ['M1RBM_splitter','M1_Rxyz']
+      M2_Txyz:
+        lien: [add_M2_Pos_FEM,M2_Txyz]
+      M2_Rxyz:
+        lien: [add_M2_Pos_FEM,M2_Rxyz]  
     outputs:
       TT_fb:
         sampling_rate: 10
@@ -349,7 +353,7 @@ drivers:
   # M1 output splitter
   M1RBM_splitter:
     server: false
-    sampling_rate: 200 # [samples]
+    sampling_rate: 1 # [samples]
     inputs:
       M1_RBM:
         lien: ['FEM','OSS_M1_lcl']
