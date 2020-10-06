@@ -217,9 +217,11 @@ drivers:
 
   wfs48:
     delay: 4000 # samples := 2s
-    sampling_rate: 20000 # x = 20000 = 10s/5e-4s = desired T/SIMCEO period
+    sampling_rate: 200
     outputs:
-      data: {sampling_rate: 1, size: 13824}
+      data:
+        sampling_rate: 20000 # x = 20000 = 10s/5e-4s = desired T/SIMCEO period
+        size: 13824
 
   SHAcO_qp:
     server: false
@@ -300,7 +302,7 @@ drivers:
     server: false
     inputs:
       M1_RBM_cmd:
-        lien: [AcO_control,M1_RBM_cmd]
+        lien: [SHAcO_qp,M1_RBM_cmd]
     outputs:
       HP_F_cmd:
         size: 42
@@ -324,7 +326,7 @@ drivers:
       M1_SA_F:
         lien: [M1LocalControl,M1SA_F]
       AcO_BM:
-        lien: [AcO_control,M1_BM_cmd]
+        lien: [SHAcO_qp,M1_BM_cmd]
     split:
       indices_or_sections: [335, 670, 1005, 1340, 1675, 2010]
       axis: 1
@@ -346,10 +348,11 @@ drivers:
 
   # M1 output splitter
   M1RBM_splitter:
-    delay: 0
+    server: false
     sampling_rate: 200 # [samples]
     inputs:
-      lien: ['FEM','OSS_M1_lcl']
+      M1_RBM:
+        lien: ['FEM','OSS_M1_lcl']
     split:
       indices_or_sections: 2
       axis: 1
@@ -377,7 +380,7 @@ drivers:
     sampling_rate: 1
     inputs:
       M2_RBM_cmd:        
-        lien: [AcO_control,M2_RBM_cmd]
+        lien: [SHAcO_qp,M2_RBM_cmd]
     outputs:
       M2Pos_RBM:
         size: 42
@@ -413,6 +416,7 @@ drivers:
 
   # Optical path driver
   science:
+    decimation: 200
     outputs:
       wfe_rms:
         size: 1
@@ -442,7 +446,7 @@ comments:
       HP_LC:
         lien: [M1HPloadcells, M1_HP_LC]
       M1_BM_cmd:
-        lien: [AcO_control,M1_BM_cmd]         
+        lien: [SHAcO_qp,M1_BM_cmd]         
     split:
       indices_or_sections: [335, 670, 1005, 1340, 1675, 2010]
       axis: 1

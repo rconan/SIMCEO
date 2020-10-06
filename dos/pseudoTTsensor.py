@@ -22,6 +22,16 @@ class pseudoTTsensor:
             self.queueSize = 12
         self.logger.info("TT sensor delay: %d", self.queueSize)
 
+        try:
+            self.reordered_in = kwargs['reordered_input']
+        except:
+            self.reordered_in = False
+        if self.reordered_in:
+            QT = np.kron(np.eye(7),np.vstack((np.eye(3), np.zeros((3,3)) )))
+            QR = np.kron(np.eye(7),np.vstack((np.zeros((3,3)), np.eye(3) )))
+            # Return from RT ordering to S1-RxyzTxyz....S7-RxyzTxyz
+            self.D_seg_tt = self.D_seg_tt.dot(np.kron(np.eye(2), np.hstack((QT,QR))))
+        self.logger.info("Pseudo TT sensor model M1/M2 reordering: %s", self.reordered_in)
 
         #Instantiate TT queue
         self.TTqueue = queue.Queue(self.queueSize)
