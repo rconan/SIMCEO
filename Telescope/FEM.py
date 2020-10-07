@@ -282,7 +282,9 @@ class FEM:
         self.P = {'OSS_M1_lcl':Q,'MC_M2_lcl_6D':Q}
         for k in self.P:
             self.__Phi__[k] = self.P[k]@self.__Phi__[k]
-            self.logger.info('- Reordering outputs of %s'%k)
+            self.logger.info('Reordering %s'%k)
+        # Update Phi after reordering -- __setprop__() overwrites __Phi__ !
+        self.Phi = np.vstack([self.__Phi__[x[0]] for x in self.OUTPUTS])
 
     def info(self):
         self.logger.info('FEM synopsis:')
