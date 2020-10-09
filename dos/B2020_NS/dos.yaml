@@ -115,7 +115,6 @@ drivers:
       #M2 RBM (Local CS)  
       MC_M2_lcl_6D:
         size: 42
-        logs: {decimation: 10}
       #M1 surface
       M1_MODES:
         size: [7, 27]
@@ -186,43 +185,29 @@ drivers:
       OSS_GIRDrive_F:
         size: 4
 
-  # Tip-tilt sensor
-  pseudoTTsensor:
-    server: false
-    #delay: 0
-    inputs:
-#      M1RBM:
-#        lien: [FEM,OSS_M1_lcl]
-#      M2RBM:
-#        lien: [FEM,MC_M2_lcl_6D]
-      M1_Txyz:
-        lien: [M1RBM_splitter,M1_Txyz]
-      M1_Rxyz:
-        lien: [M1RBM_splitter,M1_Rxyz]
-      M2_Txyz:
-        lien: [add_M2_Pos_FEM,M2_Txyz]
-      M2_Rxyz:
-        lien: [add_M2_Pos_FEM,M2_Rxyz]
+  # 24x24 SH-WFS
+  wfs24:
+    delay: 4000
+    sampling_rate: 2
     outputs:
-      TT_fb:
-        sampling_rate: 10
-        size: 14
+      M2TT:
+        sampling_rate: 10 # [samples]
+        size: 14 #[7,2]
         logs: {decimation: 10}
+      # data:
+      #   sampling_rate: 500 # [samples]
+      #   size: 0
+      #   logs: {decimation: 1}
+      # segment_tiptilt:
+      #   sampling_rate: 10 # [samples]
+      #   size: 14
+      #   logs: {decimation: 10}
+      # n_valid_lenslet:
+      #   sampling_rate: .Inf
+      #   size: 1
+      #   logs: {decimation: 1}
 
-  # TT controller + PZTcmd transformation      
-  TTDec_control_dev:
-    server: false
-    delay: 10 # Sampling frequency/TTcontrol rate 
-    sampling_rate: 10
-    inputs:
-      segments tip-tilt:
-        lien: [pseudoTTsensor,TT_fb]
-    outputs:
-      M2_PZT_cmd:
-        sampling_rate: 10
-        size: 21
-        logs: {decimation: 10}
-
+  # 3 48x48 SH-WFS probes
   wfs48:
     delay: 4000 # samples := 2s
     sampling_rate: 200
@@ -230,6 +215,21 @@ drivers:
       data:
         sampling_rate: 20000 # x = 20000 = 10s/5e-4s = desired T/SIMCEO period
         size: 13824
+
+
+  # TT controller + PZTcmd transformation      
+  TTDec_control_dev:
+    server: false
+    delay: 4010 # Sampling frequency/TTcontrol rate 
+    sampling_rate: 10
+    inputs:
+      segments tip-tilt:
+        lien: [wfs24,segment_tiptilt]
+    outputs:
+      M2_PZT_cmd:
+        sampling_rate: 10
+        size: 21
+        logs: {decimation: 10}
 
   SHAcO_qp:
     server: false
@@ -409,8 +409,10 @@ drivers:
     outputs:
       M2_Txyz:
         size: [7,3]
+        logs: {decimation: 10}
       M2_Rxyz:
         size: [7,3]
+        logs: {decimation: 10}
 
   # M2 CEO object driver      
   M2:
