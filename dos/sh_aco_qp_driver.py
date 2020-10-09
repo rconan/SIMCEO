@@ -21,23 +21,24 @@ class SHAcO_qp:
         else:
             self.logger.error('Unable to get the correct number of bending modes. Check D!')
 
-        # - - - Probe mean slope removal matrix Rs (but retains the overall contribution)
-        O = np.kron(np.eye(6),np.ones((48*48,1)))
-        V_pr = np.zeros((D.shape[0],6))
-        for iv in range(6):
-            V_pr[:,iv] = np.hstack([*[O[MaskSeg.ravel(),iv] for MaskSeg in wfsMask]])
-        Lambda_pr = np.diag(1/np.sum(V_pr,axis=0))
-        
-        R_g = np.kron(np.eye(2),np.array([[1,1,1]]).T)
-        Lambda_g = np.diag(1/np.sum(V_pr@R_g,axis=0))
-        Rs = np.eye(D.shape[0]) - (V_pr @ (Lambda_pr - R_g@Lambda_g@R_g.T) @ V_pr.T)
-
         # W1 can be used to remove mean slopes
         self.W1 = np.eye(D.shape[0])
         if 'Cs' in kwargs.keys():
             self.W1 = kwargs['Cs']
         if kwargs['rm_mean_slopes']:
+            # - - - Probe mean slope removal matrix Rs (but retains the overall contribution)
+            O = np.kron(np.eye(6),np.ones((48*48,1)))
+            V_pr = np.zeros((D.shape[0],6))
+            for iv in range(6):
+                V_pr[:,iv] = np.hstack([*[O[MaskSeg.ravel(),iv] for MaskSeg in wfsMask]])
+            Lambda_pr = np.diag(1/np.sum(V_pr,axis=0))
+            
+            R_g = np.kron(np.eye(2),np.array([[1,1,1]]).T)
+            Lambda_g = np.diag(1/np.sum(V_pr@R_g,axis=0))
+            Rs = np.eye(D.shape[0]) - (V_pr @ (Lambda_pr - R_g@Lambda_g@R_g.T) @ V_pr.T)
             self.W1 = Rs.T.dot(self.W1).dot(Rs)
+            self.logger.info('Mean slope removal feature incorporated')
+
         self.DT_W1_D = D.T.dot(self.W1).dot(D)
         self.W1_D = self.W1.dot(D)
 
@@ -48,8 +49,14 @@ class SHAcO_qp:
         self.umin = umin
         self.umax = umax
 
-        self.n_c_oa = (12+n_bm)*6
-        self.DwS7Rz = np.insert(D,[self.n_c_oa+5,self.n_c_oa+10],0,axis=1)
+        # Indices to insert (or remove) S7Rz columns
+        self.iM1S7Rz = ((12+n_bm)*6) + 5
+        self.iM2S7Rz = ((12+n_bm)*6) + 10   # Add 1 to delete
+        if 'end2end_ordering' in kwargs.keys():
+            if kwargs['end2end_ordering']:
+                self.iM1S7Rz, self.iM2S7Rz = 41, 82
+        # WFS interaction matrix with M1/2-S7Rz
+        self.DwS7Rz = np.insert(D,[self.iM1S7Rz,self.iM2S7Rz],0,axis=1)
 
         try:
             self._Tu = kwargs['_Tu']
@@ -72,7 +79,7 @@ class SHAcO_qp:
         
         # Inequality constraint matrix: lb <= Ain*u <= ub
         self.Ain = sparse.csc_matrix(   # Remove S7Rz from _Tu
-            -np.delete(self._Tu,[self.n_c_oa+5,self.n_c_oa+11], axis=1)*self.k_I) 
+            -np.delete(self._Tu,[self.iM1S7Rz,self.iM2S7Rz+1], axis=1)*self.k_I) 
              
         # Create an OSQP object as global
         self.qpp = osqp.OSQP()
@@ -93,7 +100,7 @@ class SHAcO_qp:
         y_sh = y_sh.ravel()
         y_valid = np.hstack([*[y_sh[MaskSeg.ravel()] for MaskSeg in self.wfsMask]])
         # Remove S7-Rz
-        u_ant = np.delete(self.__u,[self.n_c_oa+5,self.n_c_oa+11])
+        u_ant = np.delete(self.__u,[self.iM1S7Rz,self.iM2S7Rz+1])
         # Update linear QP term
         q = -y_valid.T.dot(self.W1_D) - self.rho3*u_ant.T.dot(self.W3)*self.k_I
         
@@ -107,7 +114,7 @@ class SHAcO_qp:
         # Check solver status
         if X.info.status == 'solved':
             # Insert zeros for M1/2S7-Rz
-            c_hat = np.insert(X.x[:self.nc],[self.n_c_oa+5,self.n_c_oa+10],0)
+            c_hat = np.insert(X.x[:self.nc],[self.iM1S7Rz,self.iM2S7Rz],0)
         else:
             self.logger.info('QP info: %s', X.info.status)
             self.logger.warning('Infeasible QP problem!!!')
@@ -115,7 +122,7 @@ class SHAcO_qp:
         
         epsilon = y_valid - self.DwS7Rz.dot(c_hat)
         J1 = epsilon.T.dot(self.W1).dot(epsilon)
-        delta = np.delete(self.k_I*c_hat - self.__u,[self.n_c_oa+5,self.n_c_oa+11])
+        delta = np.delete(self.k_I*c_hat - self.__u,[self.iM1S7Rz,self.iM2S7Rz+1])
         J3 = delta.T.dot(self.W3).dot(delta)
 
         # J3 is zero if delta is also zero -> no need for the 2nd step
@@ -141,11 +148,11 @@ class SHAcO_qp:
                 self.logger.warning('Infeasible QP problem!!!')
         
             # Insert zeros for M1/2S7-Rz
-            c_hat = np.insert(X.x[:self.nc],[self.n_c_oa+5,self.n_c_oa+10],0)
+            c_hat = np.insert(X.x[:self.nc],[self.iM1S7Rz,self.iM2S7Rz],0)
 
             epsilon = y_valid - self.DwS7Rz.dot(c_hat)
             J1 = epsilon.T.dot(self.W1).dot(epsilon)
-            delta = np.delete(self.k_I*c_hat - self.__u,[self.n_c_oa+5,self.n_c_oa+11])
+            delta = np.delete(self.k_I*c_hat - self.__u,[self.iM1S7Rz,self.iM2S7Rz+1])
             J3 = delta.T.dot(self.W3).dot(delta)
             
             self.logger.info('2nd> J1:%0.3g, J3:%0.3g, ratio:%0.3g, rho3:%0.3g' %(J1,J3,J1/(self.rho3*J3),self.rho3))

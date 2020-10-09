@@ -1,6 +1,6 @@
 simulation:
   sampling frequency: 2000 # [Hertz]
-  duration: 40 # [seconds]
+  duration: 60 # [seconds]
   server:
     IP: 127.0.0.1
 #    IP: 34.213.27.234
@@ -191,14 +191,18 @@ drivers:
     server: false
     #delay: 0
     inputs:
+#      M1RBM:
+#        lien: [FEM,OSS_M1_lcl]
+#      M2RBM:
+#        lien: [FEM,MC_M2_lcl_6D]
       M1_Txyz:
-        lien: ['M1RBM_splitter','M1_Txyz']
+        lien: [M1RBM_splitter,M1_Txyz]
       M1_Rxyz:
-        lien: ['M1RBM_splitter','M1_Rxyz']
+        lien: [M1RBM_splitter,M1_Rxyz]
       M2_Txyz:
         lien: [add_M2_Pos_FEM,M2_Txyz]
       M2_Rxyz:
-        lien: [add_M2_Pos_FEM,M2_Rxyz]  
+        lien: [add_M2_Pos_FEM,M2_Rxyz]
     outputs:
       TT_fb:
         sampling_rate: 10
@@ -353,18 +357,18 @@ drivers:
   # M1 output splitter
   M1RBM_splitter:
     server: false
-    sampling_rate: 1 # [samples]
+    sampling_rate: 200 # [samples]
     inputs:
       M1_RBM:
-        lien: ['FEM','OSS_M1_lcl']
+        lien: [FEM,OSS_M1_lcl]
     split:
       indices_or_sections: 2
       axis: 1
     outputs:
       M1_Txyz:
-        size: [7, 3]
+        size: [7,3]
       M1_Rxyz:
-        size: [7, 3]
+        size: [7,3]
 
 # M1 CEO object driver
   M1:
@@ -372,11 +376,11 @@ drivers:
     sampling_rate: 200
     inputs:
       Txyz:
-        lien: ['M1RBM_splitter','M1_Txyz']
+        lien: [M1RBM_splitter,M1_Txyz]
       Rxyz:
-        lien: ['M1RBM_splitter','M1_Rxyz']
+        lien: [M1RBM_splitter,M1_Rxyz]
       modes:
-        lien: ['FEM','M1_MODES']
+        lien: [FEM,M1_MODES]
 
   # M2 Positioner dynamics
   M2Pos_adhoc_DynModel:
@@ -404,9 +408,9 @@ drivers:
       axis: 1
     outputs:
       M2_Txyz:
-        size: [7, 3]
+        size: [7,3]
       M2_Rxyz:
-        size: [7, 3]        
+        size: [7,3]
 
   # M2 CEO object driver      
   M2:
@@ -414,13 +418,13 @@ drivers:
     sampling_rate: 200
     inputs:
       Txyz:
-        lien: ['add_M2_Pos_FEM','M2_Txyz']
+        lien: [add_M2_Pos_FEM,M2_Txyz]
       Rxyz:
-        lien: ['add_M2_Pos_FEM','M2_Rxyz']
+        lien: [add_M2_Pos_FEM,M2_Rxyz]
 
   # Optical path driver
   science:
-    decimation: 200
+    sampling_rate: 200
     outputs:
       wfe_rms:
         size: 1
@@ -428,9 +432,9 @@ drivers:
       segment_wfe_rms:
         size: 7
         logs: {decimation: 200}
-      PSSn:
-        size: 1
-        logs: {decimation: 200}
+      #PSSn:
+      #  size: 1
+      #  logs: {decimation: 200}
       tiptilt:
         size: 2
         logs: {decimation: 200}
