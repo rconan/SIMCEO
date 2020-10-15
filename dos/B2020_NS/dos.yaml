@@ -1,6 +1,6 @@
 simulation:
   sampling frequency: 2000 # [Hertz]
-  duration: 64 # [seconds]
+  duration: 84 # [seconds]
   server:
     IP: 127.0.0.1
 #    IP: 34.213.27.234
@@ -95,6 +95,7 @@ drivers:
         size: 84  
       #M1 RBM (Local CS)
       OSS_M1_lcl:
+        sampling_rate: 10
         size: 42
         logs: {decimation: 10}
       #M2 PZT
@@ -114,6 +115,7 @@ drivers:
         size: 6
       #M2 RBM (Local CS)  
       MC_M2_lcl_6D:
+        sampling_rate: 10
         size: 42
       #M1 surface
       M1_MODES:
@@ -216,7 +218,7 @@ drivers:
     sampling_rate: 200
     outputs:
       data:
-        sampling_rate: 20000 # x = 20000 = 10s/5e-4s = desired T/SIMCEO period
+        sampling_rate: 40000 # x = 20000 = 20s/5e-4s = desired T/SIMCEO period
         size: 13824
 
 
@@ -236,8 +238,8 @@ drivers:
 
   SHAcO_qp:
     server: false
-    delay: 24000 # (wfs48 delay + sampling rate)
-    sampling_rate: 20000 # samples := 10s
+    delay: 44000 # (wfs48 delay + sampling rate)
+    sampling_rate: 40000 # samples := 20s
     inputs:
       wfs48 data:
         lien: [wfs48,data]
@@ -247,13 +249,13 @@ drivers:
     outputs:
       M1_RBM_cmd:
         size: 42
-        logs: {decimation: 20000}
+        logs: {decimation: 40000}
       M2_RBM_cmd:
         size: 42
-        logs: {decimation: 20000}
+        logs: {decimation: 40000}
       M1_BM_cmd:
         size: 189 # 7*27
-        logs: {decimation: 20000}
+        logs: {decimation: 40000}
 
   # M2 PZT Controller
   FSM_control_dev:
@@ -331,7 +333,7 @@ drivers:
 
   # Driver to add the AcO BM corrections into the SA forces
   add_AcO_F:
-    sampling_rate: 1
+    sampling_rate: 10
     server: false
     inputs:
       M1_SA_F:
@@ -390,7 +392,7 @@ drivers:
   # M2 Positioner dynamics
   M2Pos_adhoc_DynModel:
     server: false
-    sampling_rate: 1
+    sampling_rate: 10
     inputs:
       M2_RBM_cmd:        
         lien: [SHAcO_qp,M2_RBM_cmd]
@@ -400,7 +402,7 @@ drivers:
 
   # Driver to sum M2 RBM from FEM and M2Pos
   add_M2_Pos_FEM:
-    sampling_rate: 1
+    sampling_rate: 10
     server: false
     # The first 42 entries are reordered, so the sequence of inputs matters!
     inputs:
@@ -413,11 +415,9 @@ drivers:
       axis: 1
     outputs:
       M2_Txyz:
-        sampling_rate: 10
         size: [7,3]
         logs: {decimation: 10}
       M2_Rxyz:
-        sampling_rate: 10
         size: [7,3]
         logs: {decimation: 10}
 
