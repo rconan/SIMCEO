@@ -1,5 +1,5 @@
 System:
-  sampling time: 0.0005
+  sampling time: 0.005
   parameters:
     A:
     - [1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
