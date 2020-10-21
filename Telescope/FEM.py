@@ -126,8 +126,8 @@ def ss2fem(*args):
     h = int(A.shape[0]/2)
     O = np.sqrt(-A[h:,:h].diagonal())
     Z = -0.5*A[h:,h:].diagonal()/O
-    Phi = C[:,:-h]
-    Phim = B[h:,:].T
+    Phi = C[:,:-h]      #<--- This is probably wrong
+    Phim = B[h:,:].T    #<--- This is probably wrong
     return O,Z,Phim.toarray(),Phi.toarray()
 
 def freqrep(nu,Phi,Phim,O,Z,n_mode_max=None):
@@ -228,7 +228,9 @@ class FEM:
             self.Z = np.ravel(self.Z)
         self.INPUTS = fem_inputs
         self.OUTPUTS = fem_outputs
-        self.state = {'u':None,'y':None,'A':None,'B':None,'C':None,'D':None, 'x': None, 'step':0}
+        # self.state = {'u':None,'y':None,'A':None,'B':None,'C':None,'D':None, 'x': None, 'step':0}
+        self.state = {'u':None,'y':None,'PG1':None,'PG2':None,'PG3':None,'PG4':None,'PG5':None,'PG6':None,
+            'B':None,'C':None,'x1': None,'x2': None,'step':0}
         
         self.__setprop__()
         
@@ -369,6 +371,7 @@ class FEM:
         Returns:
         --------
         ad, bd : the discrete state space A and B matrices
+        PG : Matrix PhiGamma with coefficients of the discretized model
         """
 
         ss = a.shape[0] // 2
@@ -376,27 +379,32 @@ class FEM:
         I_2 = a[ss:,:ss].diagonal()
         I_3 = a[ss:,ss:].diagonal()
 
-        Ad = np.zeros(a.shape, dtype=ftype)
-        Bd = np.zeros(b.shape, dtype=ftype)
+        # Ad = np.zeros(a.shape, dtype=ftype)
+        # Bd = np.zeros(b.shape, dtype=ftype)
 
         A_ = np.zeros((3,3))
-        B_ = np.zeros((2,b.shape[1]))
+        # B_ = np.zeros((2,b.shape[1]))
         A_[0,1], A_[1,2] = 1, 1
+
+        PG = np.zeros((ss,6), dtype=ftype)
 
         phiGamma = np.zeros((3,3))
         for k in range(ss):
-            ki = ss + k
+            # ki = ss + k
             A_[1,0], A_[1,1] = I_2[k], I_3[k]
-            B_[0,:]  = b[k, :].toarray()
-            B_[1,:]  = b[ki,:].toarray()
+            # B_[0,:]  = b[k, :].toarray()
+            # B_[1,:]  = b[ki,:].toarray()
             phiGamma = lalg.expm(A_ * dt)
+            # # Fill entries of the state-space model matrices
+            # Ad[k,k],  Ad[k,ki]  = phiGamma[0,0], phiGamma[0,1]
+            # Ad[ki,k], Ad[ki,ki] = phiGamma[1,0], phiGamma[1,1]
+            # Bd[k,:]  = phiGamma[0,2] * b[ki,:].toarray()
+            # Bd[ki,:] = phiGamma[1,2] * b[ki,:].toarray()
+            # 
+            PG[k,:] = np.hstack([phiGamma[0,:],phiGamma[1,:]])
 
-            Ad[k,k],  Ad[k,ki]  = phiGamma[0,0], phiGamma[0,1]
-            Ad[ki,k], Ad[ki,ki] = phiGamma[1,0], phiGamma[1,1]
-            Bd[k,:]  = phiGamma[0,2] * b[ki,:].toarray()
-            Bd[ki,:] = phiGamma[1,2] * b[ki,:].toarray()
-        
-        return sparse.csr_matrix(Ad), Bd
+        return PG
+        #return sparse.csr_matrix(Ad), Bd, PG
 
 
     def state_space(self,dt=None,ftype=np.float64):
@@ -435,10 +443,11 @@ class FEM:
 
         if dt is not None:
             if CUDA_LIBRARY:
-                Ad,Bd = self.gpu_c2s(A,B,dt)
+                PG = self.gpu_c2s(A,B,dt)
+                return PG,B,C
             else:
                 Ad,Bd = self.c2s(A,B,dt)
-            return Ad,Bd,C
+                return Ad,Bd,C
         else:
             return A,B,C
 
@@ -703,12 +712,19 @@ class FEM:
         self.reduce(inputs=inputs,outputs=outputs,
                     hsv_rel_threshold=hsv_rel_threshold,
                     n_mode_max=n_mode_max)
-        A,B,C = self.state_space(dt=dt)
+        #A,B,C = self.state_space(dt=dt)
+        PG,B,C = self.state_space(dt=dt)
+        # self.state.update({'u':np.zeros(self.N_INPUTS),
+        #                    'y':np.zeros(self.N_OUTPUTS),
+        #                    'A':A,'B':B,'C':C,'D':None,
+        #                    'x':np.zeros(A.shape[1]),
+        #                    'step':0})
         self.state.update({'u':np.zeros(self.N_INPUTS),
-                           'y':np.zeros(self.N_OUTPUTS),
-                           'A':A,'B':B,'C':C,'D':None,
-                           'x':np.zeros(A.shape[1]),
-                           'step':0})
+                    'y':np.zeros(self.N_OUTPUTS),
+                    'PG1':PG[:,0],'PG2':PG[:,1],'PG3':PG[:,2],'PG4':PG[:,3],'PG5':PG[:,4],'PG6':PG[:,5],
+                    'PhiB':self.Phim.T,'PhiC':self.Phi,
+                    'x1':np.zeros(self.O.size),'x2':np.zeros(self.O.size),
+                    'step':0})
         # Initializing GPU state space
         if CUDA_LIBRARY:
             self._initialize_gpu_env()
@@ -724,7 +740,7 @@ class FEM:
     def reset_state(self):
         self.state.update({'u':np.zeros(self.N_INPUTS),
                            'y':np.zeros(self.N_OUTPUTS),
-                           'x':np.zeros(2*self.O.size),
+                           'x1':np.zeros(self.O.size),'x2':np.zeros(self.O.size),
                            'step':0})
 
     def _initialize_gpu_env(self, var_type=np.float64):
@@ -795,21 +811,32 @@ class FEM:
             a += s
 
         if CUDA_LIBRARY:
-            self.gpu['u'] = cp.array(_u, dtype = np.float64)
-            self.gpu['x'] = self.gpu['A'].dot(self.gpu['x']) + self.gpu['B']@self.gpu['u']
-            self.gpu['y'] = self.gpu['C'].dot(self.gpu['x']) 
+            self.gpu['y'] = self.gpu['PhiC'].dot(self.gpu['x1']) 
             self.state['y'] = self.gpu['y'].get().ravel()
-            if self.log_states:
-                self.save_info['data'] = self.gpu['x'][:].get()
-                self.stateQueue.put(self.save_info)
-                self.save_info['index'] += 1
-            if self.build_bendingmodes:
-                self.bm_states['displacements'] = self.gpu['y'][self.bm_states['ind']]
-                self.bm_states['pistontiptilt'] = cp.dot(self.bm_states['Qinv'],self.bm_states['displacements'])
-                self.bm_states['pistontiptilt'] = cp.dot(self.bm_states['Q'],self.bm_states['pistontiptilt'])
-                self.bm_states['displacements'] = self.bm_states['displacements'] #- self.bm_states['pistontiptilt']
-                self.bm_states['bm_magnitude']  = cp.dot(self.bm_states['U.T'], self.bm_states['displacements'])
-                self.state['y'] = np.concatenate((self.state['y'], self.bm_states['bm_magnitude'].get()), axis=0)
+
+            self.gpu['u'] = cp.array(_u, dtype = np.float64)
+            phiBu = self.gpu['PhiB']@self.gpu['u']
+            x1__ = self.gpu['PG1']*self.gpu['x1']+self.gpu['PG2']*self.gpu['x2']+self.gpu['PG3']*phiBu
+            # Update velocity states
+            self.gpu['x2'] = self.gpu['PG4']*self.gpu['x1']+self.gpu['PG5']*self.gpu['x2']+self.gpu['PG6']*phiBu
+            # Update position states
+            self.gpu['x1'] = x1__
+
+            # self.gpu['x'] = self.gpu['A'].dot(self.gpu['x']) + self.gpu['B']@self.gpu['u']
+            # self.gpu['y'] = self.gpu['C'].dot(self.gpu['x']) 
+            # self.state['y'] = self.gpu['y'].get().ravel()
+
+            # if self.log_states:
+            #     self.save_info['data'] = self.gpu['x'][:].get()
+            #     self.stateQueue.put(self.save_info)
+            #     self.save_info['index'] += 1
+            # if self.build_bendingmodes:
+            #     self.bm_states['displacements'] = self.gpu['y'][self.bm_states['ind']]
+            #     self.bm_states['pistontiptilt'] = cp.dot(self.bm_states['Qinv'],self.bm_states['displacements'])
+            #     self.bm_states['pistontiptilt'] = cp.dot(self.bm_states['Q'],self.bm_states['pistontiptilt'])
+            #     self.bm_states['displacements'] = self.bm_states['displacements'] #- self.bm_states['pistontiptilt']
+            #     self.bm_states['bm_magnitude']  = cp.dot(self.bm_states['U.T'], self.bm_states['displacements'])
+            #     self.state['y'] = np.concatenate((self.state['y'], self.bm_states['bm_magnitude'].get()), axis=0)
         else:
             _x = self.state['x']
             x_next = self.state['A']@_x + self.state['B']@_u
