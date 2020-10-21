@@ -47,7 +47,7 @@ drivers:
       OSS_Truss_6F:
         lien: [wind_loads,OSS_Truss_6F]
       OSS_Harpoint_delta_F:
-        lien: [M1_HP,HP_F_cmd]
+        lien: [M1_HP_Dyn,HP_F_cmd]
       M1_actuators_segment_1:
         lien: [M1SA_F_Control, M1_Rel_F_S1]
       M1_actuators_segment_2:
@@ -164,7 +164,7 @@ drivers:
         size: 1
 
   # Mount drive (actuators)
-  MountDrives:
+  Mount_Drives:
     server: false
     inputs:
       AZ_cmd:
@@ -204,7 +204,7 @@ drivers:
   # 3 48x48 SH-WFS probes
   wfs48:
     delay: 2000 # samples := 2s
-    sampling_rate: 5
+    sampling_rate: 100
     outputs:
       data:
         sampling_rate: 20000 # x = 20000 = 20s/1e-3s = desired T/SIMCEO period

@@ -1,4 +1,4 @@
 wind loads:
   cfd_case: b2019_30z_0az_os_7ms
   s3path: s3://gmto.starccm/Baseline2020
-  time_range: [100, 180] #[100, .inf]
+  time_range: [100, 185] #[100, .inf]
