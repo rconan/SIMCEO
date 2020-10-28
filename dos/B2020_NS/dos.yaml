@@ -6,6 +6,8 @@ simulation:
 #    IP: 34.213.27.234
 
 drivers:
+  # Atmosphere
+  atmosphere: {}
   # Wind load driver
   wind_loads:
     outputs:
