@@ -489,6 +489,7 @@ class SAtmosphere(Sfunction):
     def Start(self, **kwargs):
         print("\n@(SAtmosphere:Start)>")
         #self.atm = _Atmosphere_( **kwargs )
+        kwargs['fov'] *= ceo.constants.ARCMIN2RAD
         self.atm = ceo.GmtAtmosphere(**kwargs)
         return "ATM"
 
