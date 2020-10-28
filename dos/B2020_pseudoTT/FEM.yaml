@@ -1,0 +1,11 @@
+FEM:
+  build:
+    #second_order_filename: dos/B2020/MT_FSM_c.mat
+    #second_order_filename: dos/FEM/20190723_new_100p_lateral_100p_axial_SI_30_el_0_az_locked.mat
+    second_order_filename: /home/ubuntu/Notebooks/gmt_model_dt/modal_2order_model_wProjM1fig.py.mat
+    #second_order_filename: /home/ubuntu/Notebooks/gmt_model_dt/modal_state_space_model.py.mat
+    reorder_RBM: false
+    damping_ratio: 2.0e-2 #0.5e-2 #
+  reduction: #{}
+    hsv_rel_threshold: 1.0e-5 # 
+    start_idx: 3
