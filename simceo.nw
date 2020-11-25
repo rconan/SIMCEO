@@ -179,7 +179,7 @@ class broker(threading.Thread):
 
         self.context = zmq.Context()
         self.socket = self.context.socket(zmq.REP)
-        self.address = "tcp://*:3650"
+        self.address = "tcp://*:3652"
         self.socket.bind(self.address)
         self.loop = True
         
@@ -489,6 +489,7 @@ class SAtmosphere(Sfunction):
     def Start(self, **kwargs):
         print("\n@(SAtmosphere:Start)>")
         #self.atm = _Atmosphere_( **kwargs )
+        kwargs['fov'] *= ceo.constants.ARCMIN2RAD
         self.atm = ceo.GmtAtmosphere(**kwargs)
         return "ATM"
 
@@ -1767,15 +1768,17 @@ from dos import control
 # 1KHz rate drivers
 from CythonDrivers import Mount_Drives
 from CythonDrivers import M1_HP_Dyn
-from CythonDrivers import M1SA_F_Control
 # Static mapping
 from CythonDrivers import M1HPloadcells
 # 2KHz rate drivers
 from CythonDrivers import MountDrives
 from CythonDrivers import M1hardpoints
 from CythonDrivers import M1LocalControl
+# 100Hz rate drivers
+from CythonDrivers import M1SA_F_Control
 # Other drivers (AcO & Pseudo sensor models)
 from .sh_aco_qp_driver import SHAcO_qp
+from .in_shaper_etm4 import in_shaper_ETM4
 from .pseudoTTsensor import pseudoTTsensor
 from .pseudoWFsensor import pseudoWFsensor
 from dos.source import Source
@@ -1934,7 +1937,7 @@ class broker:
         self.context = zmq.Context()
         self.logger.info("Connecting to server...")
         self.socket = self.context.socket(zmq.REQ)
-        self.socket.connect("tcp://{}:3650".format(IP))
+        self.socket.connect("tcp://{}:3652".format(IP))
         self._send_("Acknowledging connection from SIMCEO client!")
         print(self._recv_())
 

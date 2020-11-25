@@ -63,3 +63,5 @@ m1s*_bm_shapes.mat
 # Large files
 SHAcO_qp.pickle
 add_AcO_F.pickle
+dos/B2020_NS/*.pickle
+dos/B2020_NS_shortExpAcO/*.pickle

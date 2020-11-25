@@ -12,6 +12,8 @@ class SHAcO_qp:
     def __init__(self,D,W2,W3,K,wfsMask,umin,umax,**kwargs):
         self.logger = logging.getLogger(self.__class__.__name__)                        
         
+        self.logger.info(' - - - Initializing AcO QP-based algorithm! - - - ')
+
         self.mount_included = False
         if not ((D.shape[1]+2) % 7):
             n_bm = ((D.shape[1]+2)//7) - 12
@@ -43,11 +45,28 @@ class SHAcO_qp:
         self.W1_D = self.W1.dot(D)
 
         # It is assumed that W3 incorporates the Tu transformation effect
-        self.W2, self.W3, self.rho3, self.k_I = W2, W3, 1e-3, K
+        self.W2, self.W3, self.k_I = W2, W3, K
         self.wfsMask = wfsMask
         # Constraints
         self.umin = umin
         self.umax = umax
+
+        try:
+            self._Tu = kwargs['_Tu']
+        except:
+            self._Tu = np.eye(D.shape[1])
+
+        if 'rho3' in kwargs.keys():
+            self.rho3 = kwargs['rho3']
+        else:
+            self.rho3 = 1.0e-1
+
+        if 'J1_J3_ratio' in kwargs.keys():
+            self.J1_J3_ratio = kwargs['J1_J3_ratio']
+        else:
+            self.J1_J3_ratio = 10
+
+        self.logger.info('AcO: k_I-%.3g(integral gain) and rho3(0)=%.3g'%(self.k_I,self.J1_J3_ratio))
 
         # Indices to insert (or remove) S7Rz columns
         self.iM1S7Rz = ((12+n_bm)*6) + 5
@@ -57,19 +76,6 @@ class SHAcO_qp:
                 self.iM1S7Rz, self.iM2S7Rz = 41, 82
         # WFS interaction matrix with M1/2-S7Rz
         self.DwS7Rz = np.insert(D,[self.iM1S7Rz,self.iM2S7Rz],0,axis=1)
-
-        try:
-            self._Tu = kwargs['_Tu']
-        except:
-            self._Tu = np.eye(D.shape[1])
-
-        if 'J1_J3_ratio' in kwargs.keys():
-            self.J1_J3_ratio = kwargs['J1_J3_ratio']
-        else:
-            self.J1_J3_ratio = 10
-
-        self.__u = np.zeros(0)
-        self.logger.info(' * * * Initializing AcO QP-based algorithm! * * * ')
 
         # Reconstructor dimensions
         self.nc = D.shape[1]
@@ -88,6 +94,9 @@ class SHAcO_qp:
             l=-np.inf*np.ones(self.Ain.shape[0]),u=np.inf*np.ones(self.Ain.shape[0]),
             eps_abs = 1.0e-8, eps_rel = 1.0e-6, max_iter = 500*self.nc,
             verbose=False, warm_start=True)
+
+        # Integral controller initial state
+        self.__u = np.zeros(0)
 
 
     def init(self):
