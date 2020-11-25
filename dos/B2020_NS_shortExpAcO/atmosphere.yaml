@@ -1,0 +1,8 @@
+r0: 0.147 # meter
+L0: 25.0 # meter
+L: 25.5 # meter
+NXY_PUPIL: 769
+fov: 10.0 # arcmin
+duration: 20 # second
+N_DURATION: 5 # the total duration of the phase screens is duration x N_DURATION
+filename: atmosphere_20s.bin # if the file already exists it will be loaded otherwise it will be created
