@@ -1,13 +1,13 @@
 simulation:
   sampling frequency: 1000 # [Hertz]
-  duration: 50 # [seconds]
+  duration: 45 # [seconds]
   server:
     IP: 127.0.0.1
 #    IP: 34.213.27.234
 
 drivers:
   # Atmosphere
-  atmosphere: {}
+  # atmosphere: {}
   # Wind load driver
   wind_loads:
     outputs:
@@ -209,11 +209,11 @@ drivers:
     sampling_rate: 5 #10
     outputs:
       data:
-        sampling_rate: 30000 # samples 
+        sampling_rate: 20000 # samples 
         size: 13824
 
   # TT controller + PZTcmd transformation      
-  TTDec_control_dev:
+  TT_control_dev:
     server: false
     delay: 3005 # Sampling frequency/TTcontrol rate 
     sampling_rate: 5
@@ -221,7 +221,7 @@ drivers:
       segments tip-tilt:
         lien: [wfs24,M2TT]
     outputs:
-      M2_PZT_cmd:
+      M2_RxRy_cmd:
         size: 21
         logs: {decimation: 5}
 
@@ -250,8 +250,8 @@ drivers:
   FSM_control_dev:
     server: false
     inputs:
-      M2_PZT_SP:
-        lien: [TTDec_control_dev,M2_PZT_cmd]
+      M2_RxRy_cmd:
+        lien: [TT_control_dev,M2_RxRy_cmd]
       PZT_S1_FB:
         lien: [FEM,MC_M2_PZT_S1_D]
       PZT_S2_FB:
@@ -384,7 +384,8 @@ drivers:
   m2offloadAvgTF:
     sampling_rate: 5
     inputs:
-      lien: [wfs24,M2TT]
+      M2RxRy_cmd:
+        lien: [TT_control_dev,M2_RxRy_cmd]
     outputs:
       avgM2TT_cmd:
         size: 42
