@@ -66,7 +66,7 @@ class SHAcO_qp:
         else:
             self.J1_J3_ratio = 10
 
-        self.logger.info('AcO: k_I-%.3g(integral gain) and rho3(0)=%.3g'%(self.k_I,self.J1_J3_ratio))
+        self.logger.info('AcO: k_I=%.3g(integral gain) and rho3(0)=%.3g'%(self.k_I,self.J1_J3_ratio))
 
         # Indices to insert (or remove) S7Rz columns
         self.iM1S7Rz = ((12+n_bm)*6) + 5

@@ -1,6 +1,6 @@
 simulation:
   sampling frequency: 1000 # [Hertz]
-  duration: 84 # [seconds]
+  duration: 50 # [seconds]
   server:
     IP: 127.0.0.1
 #    IP: 34.213.27.234
@@ -100,7 +100,7 @@ drivers:
       OSS_M1_lcl:
         sampling_rate: 5
         size: 42
-        logs: {decimation: 5}
+#        logs: {decimation: 5}
       #M2 PZT
       MC_M2_PZT_S1_D:
         size: 6
@@ -195,8 +195,8 @@ drivers:
 
   # 24x24 SH-WFS
   wfs24:
-    delay: 2000 # samples := 2s
-    sampling_rate: 5
+    delay: 3000 # samples := 3s
+    sampling_rate: 1 #5
     outputs:
       M2TT:
         sampling_rate: 5 # [samples]
@@ -205,17 +205,17 @@ drivers:
 
   # 3 48x48 SH-WFS probes
   wfs48:
-    delay: 2000 # samples := 2s
-    sampling_rate: 100
+    delay: 4000 # samples
+    sampling_rate: 5 #10
     outputs:
       data:
-        sampling_rate: 20000 # x = 20000 = 20s/1e-3s = desired T/SIMCEO period
+        sampling_rate: 30000 # samples 
         size: 13824
 
   # TT controller + PZTcmd transformation      
   TTDec_control_dev:
     server: false
-    delay: 2005 # Sampling frequency/TTcontrol rate 
+    delay: 3005 # Sampling frequency/TTcontrol rate 
     sampling_rate: 5
     inputs:
       segments tip-tilt:
@@ -227,7 +227,7 @@ drivers:
 
   SHAcO_qp:
     server: false
-    delay: 22000 # (wfs48 delay + sampling rate)
+    delay: 24000 # (wfs48 delay + sampling rate)
     sampling_rate: 20000 # samples := 20s
     inputs:
       wfs48 data:
@@ -297,16 +297,28 @@ drivers:
     outputs:
       M1_HP_LC:
         size: 42
-  
+
+  m1RBM_IS_f:
+    server: false
+    sampling_rate: 50 #5
+    inputs:
+      M1_RBM_cmd:
+#         lien: [M1RBM_2ndETM4,OUT]
+        lien: [SHAcO_qp,M1_RBM_cmd]
+    outputs:
+      M1_RBM_cmd_F:
+        size: 42
+ 
   # M1 HP dynamics model
   M1_HP_Dyn:
     server: false
     inputs:
       M1_RBM_cmd:
-        lien: [SHAcO_qp,M1_RBM_cmd]
+        lien: [m1RBM_IS_f,M1_RBM_cmd_F]
     outputs:
       HP_F_cmd:
         size: 42
+        logs: {decimation: 5}
 
   # M1 local controller with BM inputs
   M1SA_F_Control:
@@ -316,13 +328,15 @@ drivers:
       HP_LC:
         lien: [M1HPloadcells, M1_HP_LC]
       M1_BM_cmd:
-        lien: [SHAcO_qp,M1_BM_cmd]         
+#        size: 189
+        lien: [SHAcO_qp,M1_BM_cmd]    
     split:
       indices_or_sections: [335, 670, 1005, 1340, 1675, 2010]
       axis: 1
     outputs:
       M1_Rel_F_S1:
         size: 335
+        logs: {decimation: 5}
       M1_Rel_F_S2:
         size: 335
       M1_Rel_F_S3:
@@ -349,8 +363,10 @@ drivers:
     outputs:
       M1_Txyz:
         size: [7,3]
+        logs: {decimation: 5}
       M1_Rxyz:
         size: [7,3]
+        logs: {decimation: 5}
 
 # M1 CEO object driver
   M1:
@@ -364,16 +380,54 @@ drivers:
       modes:
         lien: [FEM,M1_MODES]
 
+  # Driver to average the M2TT commands
+  m2offloadAvgTF:
+    sampling_rate: 5
+    inputs:
+      lien: [wfs24,M2TT]
+    outputs:
+      avgM2TT_cmd:
+        size: 42
+        logs: {decimation: 5} 
+
+  # Driver to sum the AcO M2_RBM and the M2TT commands
+  add_M2offload_cmd:
+    sampling_rate: 1000
+    server: false
+    # The first 42 entries are the AcO commands, so the sequence of inputs matters!
+    inputs:
+      AcO_M2_cmd:
+        lien: [SHAcO_qp,M2_RBM_cmd]
+      avgM2TT_cmd:
+        lien: [m2offloadAvgTF,avgM2TT_cmd]
+    outputs:
+      M2_RBM:
+        size: 42
+        logs: {decimation: 1000}  
+
+  # M2 RBM input shaping filter 
+  m2RBM_IS_f: #_notch:
+    server: false
+    sampling_rate: 50
+    inputs:
+      M2_RBM_cmd:
+        lien: [add_M2offload_cmd,M2_RBM]
+    outputs:
+      M2_RBM_cmd_f:
+        size: 42
+
   # M2 Positioner dynamics
   M2Pos_adhoc_DynModel:
     server: false
     sampling_rate: 5
     inputs:
-      M2_RBM_cmd:        
-        lien: [SHAcO_qp,M2_RBM_cmd]
+      M2_RBM_cmd:
+        size: 42
+        lien: [m2RBM_IS_f,M2_RBM_cmd_f]
     outputs:
       M2Pos_RBM:
         size: 42
+        logs: {decimation: 5}
 
   # Driver to sum M2 RBM from FEM and M2Pos
   add_M2_Pos_FEM:
@@ -382,6 +436,7 @@ drivers:
     # The first 42 entries are reordered, so the sequence of inputs matters!
     inputs:
       M2Pos:
+#        size: 42
         lien: [M2Pos_adhoc_DynModel,M2Pos_RBM]
       FEM_M2_RBM:
         lien: [FEM,MC_M2_lcl_6D]
@@ -411,26 +466,52 @@ drivers:
     sampling_rate: 5
     outputs:
       wfe_rms:
-        sampling_rate: 20
+        sampling_rate: 10
         size: 1
-        logs: {decimation: 20}
+        logs: {decimation: 10}
       segment_wfe_rms:
-        sampling_rate: 20
+        sampling_rate: 10
         size: 7
-        logs: {decimation: 20}
+        logs: {decimation: 10}
       segment_piston:
-        sampling_rate: 20
+        sampling_rate: 10
         size: 7
-        logs: {decimation: 20}  
-      #PSSn:
-      #  size: 1
-      #  logs: {decimation: 200}
+        logs: {decimation: 10}  
       tiptilt:
         size: 2
         logs: {decimation: 5}
       segment_tiptilt:
         size: 14
         logs: {decimation: 5}
-comments:
 
+comments:
       
+  science1:
+    sampling_rate: 10
+    outputs:
+      wfe_rms:
+        size: 1
+        logs: {decimation: 10}
+      segment_piston:
+        size: 7
+        logs: {decimation: 10}
+
+  science2:
+    sampling_rate: 10
+    outputs:
+      wfe_rms:
+        size: 1
+        logs: {decimation: 10}
+      segment_piston:
+        size: 7
+        logs: {decimation: 10}
+  
+  science3:
+    sampling_rate: 10
+    outputs:
+      wfe_rms:
+        size: 1
+        logs: {decimation: 10}
+      segment_piston:
+        size: 7
+        logs: {decimation: 10}
