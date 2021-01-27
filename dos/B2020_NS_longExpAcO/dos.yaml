@@ -222,7 +222,7 @@ drivers:
         lien: [wfs24,M2TT]
     outputs:
       M2_RxRy_cmd:
-        size: 21
+        size: 14
         logs: {decimation: 5}
 
   SHAcO_qp:
@@ -336,7 +336,7 @@ drivers:
     outputs:
       M1_Rel_F_S1:
         size: 335
-        logs: {decimation: 5}
+        logs: {decimation: 10}
       M1_Rel_F_S2:
         size: 335
       M1_Rel_F_S3:
@@ -381,17 +381,30 @@ drivers:
         lien: [FEM,M1_MODES]
 
   # Driver to average the M2TT commands
-  m2offloadAvgTF:
+  m2RxRyAvgTF:
+    server: false
     sampling_rate: 5
     inputs:
       M2RxRy_cmd:
         lien: [TT_control_dev,M2_RxRy_cmd]
     outputs:
-      avgM2TT_cmd:
-        size: 42
+      avgM2RxRy_cmd:
+        size: 14
         logs: {decimation: 5} 
 
-  # Driver to sum the AcO M2_RBM and the M2TT commands
+  # Driver to accumulate the M2RxRy avg commands
+  m2offload:
+    server: false
+    sampling_rate: 1000
+    inputs:
+      M2RxRy_cmd:
+        lien: [m2RxRyAvgTF,avgM2RxRy_cmd]
+    outputs:
+      M2offload_cmd:
+        size: 14
+        logs: {decimation: 1000} 
+
+  # Driver to sum the AcO M2_RBM and the M2TT offload commands
   add_M2offload_cmd:
     sampling_rate: 1000
     server: false
@@ -399,8 +412,8 @@ drivers:
     inputs:
       AcO_M2_cmd:
         lien: [SHAcO_qp,M2_RBM_cmd]
-      avgM2TT_cmd:
-        lien: [m2offloadAvgTF,avgM2TT_cmd]
+      avgM2Rxy_cmd:
+        lien: [m2offload,M2offload_cmd]
     outputs:
       M2_RBM:
         size: 42
