@@ -1,7 +1,6 @@
 wind loads:
-  cfd_case: b2019_60z_0az_cd_17ms
-  #cfd_case: b2019_30z_0az_os_7ms
-  #fs: 50
+  cfd_case: b2019_30z_0az_os_7ms
+  # cfd_case: b2019_60z_0az_cd_17ms
   s3path: s3://gmto.starccm/Baseline2020
-  groups: ['top-end','truss','GIR','C-Ring','M1','M2','M1TransientWind']
-  time_range: [550, 610] #[100, .inf]
+  time_range: [100, 185] #[100, .inf]
+

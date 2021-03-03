@@ -33,7 +33,7 @@ drivers:
       OSS_AzDrive_Torque:
         lien: [Mount_Drv_PDR2021,OSS_AzDrive_To]
       OSS_RotDrive_Torque:
-        lien: [Mount_Drv_PDR2021,OSS_RotDrive_To]
+        lien: [Mount_Drv_PDR2021,OSS_GIRDrive_To]
       OSS_Truss_6F:
         lien: [wind_loads,OSS_Truss_6F]
       MC_M2_TE_6F:
@@ -124,7 +124,7 @@ drivers:
       OSS_ElDrive_D:
           lien: [FEM,OSS_ElEncoder_Angle]
       OSS_GIRDrive_D:
-        lien: [FEM,OSS_OSS_RotEncoder_Angle]
+        lien: [FEM,OSS_RotEncoder_Angle]
     shape: [1,20]
     split:
       indices_or_sections: [12,16]
