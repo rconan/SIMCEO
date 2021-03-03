@@ -1,0 +1,189 @@
+simulation:
+  sampling frequency: 1000 # [Hertz]
+  duration: 20 # [seconds]
+  server:
+    IP: 127.0.0.1
+#    IP: 34.213.27.234
+
+drivers:
+  # Atmosphere
+  # atmosphere: {}
+  # Wind load driver
+  wind_loads:
+    outputs:
+      OSS_TopEnd_6F:
+        size: 6
+      OSS_Truss_6F:
+        size: 36
+      OSS_GIR_6F:
+        size: 6
+      OSS_CRING_6F:
+        size: 18
+      OSS_Cell_lcl_6F:
+        size: 42
+      OSS_M1_lcl_6F:
+        size: 42
+      MC_M2_lcl_force_6F:
+        size: 42
+
+  FEM:
+    inputs:
+      OSS_ElDrive_Torque:
+        lien: [Mount_Drv_PDR2021,OSS_ElDrive_To]
+      OSS_AzDrive_Torque:
+        lien: [Mount_Drv_PDR2021,OSS_AzDrive_To]
+      OSS_RotDrive_Torque:
+        lien: [Mount_Drv_PDR2021,OSS_RotDrive_To]
+      OSS_Truss_6F:
+        lien: [wind_loads,OSS_Truss_6F]
+      MC_M2_TE_6F:
+        lien: [wind_loads,OSS_TopEnd_6F]
+      OSS_M1_lcl_6F:
+        lien: [adder42_2,M1_CG_FM_mirror]
+        size: 42
+      # OSS_Harpoint_delta_F:
+      #   lien: [M1_HP_Dyn,HP_F_cmd]
+      OSS_Cell_lcl_6F:
+        lien: [subtr42_2,M1_CG_FM_cell]
+        size: 42
+      MC_M2_RB_6F:
+        lien: [wind_loads, MC_M2_lcl_force_6F]
+      # MC_M2_SmHex_F:
+      #   size: 84
+    outputs:
+      OSS_ElEncoder_Angle:
+        size: 6
+        logs: {decimation: 5}
+      OSS_AzEncoder_Angle:
+        size: 4
+        logs: {decimation: 5}
+      OSS_RotEncoder_Angle:
+        size: 4
+        logs: {decimation: 5}
+      OSS_M1_lcl:
+        size: 42
+        logs: {decimation: 5}
+      OSS_Hardpoint_D:
+        size: 84
+        logs: {decimation: 5}
+      # OSS_Cell_lcl:
+      #   size: 42
+      MC_M2_RB_6D:
+        size: 42
+        logs: {decimation: 5}
+      # MC_M2_SmHex_D:
+      #   size: 84  
+      
+# Mount controller
+  AZ_fb_ssC:
+    server: false
+    sampling_rate: 5
+    inputs:
+      Az_SP:
+        size: 1
+      OSS_AzDrive_D:
+        lien: [FEM,OSS_AzEncoder_Angle]
+    outputs:
+      Az_Drive_cmd:
+        size: 1
+  EL_fb_ssC:
+    server: false
+    sampling_rate: 5
+    inputs:
+      El_SP:
+        size: 1
+      OSS_ElDrive_D:
+        lien: [FEM,OSS_ElEncoder_Angle]
+    outputs:
+      El_Drive_cmd:
+        size: 1
+  GIR_fb_ssC:
+    server: false
+    sampling_rate: 5
+    inputs:
+      GIR_SP:
+        size: 1
+      OSS_GIRDrive_D:
+        lien: [FEM,OSS_RotEncoder_Angle]
+    outputs:
+      GIR_Drive_cmd:
+        size: 1
+
+  # Mount drive (actuators)
+  Mount_Drv_PDR2021:
+    server: false
+    inputs:
+      AZ_cmd:
+        lien: [AZ_fb_ssC,Az_Drive_cmd]
+      EL_cmd:
+        lien: [EL_fb_ssC,El_Drive_cmd]
+      GIR_cmd:
+        lien: [GIR_fb_ssC,GIR_Drive_cmd]
+      OSS_AzDrive_D:
+        lien: [FEM,OSS_AzEncoder_Angle]
+      OSS_ElDrive_D:
+          lien: [FEM,OSS_ElEncoder_Angle]
+      OSS_GIRDrive_D:
+        lien: [FEM,OSS_OSS_RotEncoder_Angle]
+    shape: [1,20]
+    split:
+      indices_or_sections: [12,16]
+      axis: 1
+    outputs:
+      OSS_AzDrive_To:
+        size: 12
+      OSS_ElDrive_To:
+        size: 4
+      OSS_GIRDrive_To:
+        size: 4
+
+  M1HPloadcells:
+    sampling_rate: 10
+    server: false
+    inputs:
+      M1_HP_D:
+        size: 84
+        lien: [FEM, OSS_Hardpoint_D]
+      M1_HP_cmd:
+        size: 42
+    outputs:
+      M1_HP_LC:
+        size: 42
+
+  M1OFL_Control:
+    sampling_rate: 10
+    server: false
+    inputs:
+      HP_LC:
+        lien: [M1HPloadcells, M1_HP_LC]
+    outputs:
+      M1_CG_FM:
+        size: 42
+        # logs: {decimation: 10}
+
+  # Driver to combine the M1 control effort and the wind load (mirror side)
+  adder42_2:
+    sampling_rate: 1
+    server: false
+    inputs:
+      M1_WL_mirror:
+        lien: [wind_loads, OSS_M1_lcl_6F]
+      M1_CG_FM:
+        lien: [M1OFL_Control, M1_CG_FM]
+    outputs:
+      M1_CG_FM_mirror:
+        size: 42
+        # logs: {decimation: 10}
+
+  subtr42_2:
+    sampling_rate: 1
+    server: false
+    inputs:
+      M1_WL_mirror:
+        lien: [wind_loads, OSS_Cell_lcl_6F]
+      M1_CG_FM:
+        lien: [M1OFL_Control, M1_CG_FM]
+    outputs:
+      M1_CG_FM_cell:
+        size: 42
+        # logs: {decimation: 10}

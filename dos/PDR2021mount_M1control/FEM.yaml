@@ -1,0 +1,8 @@
+FEM:
+  build:
+    second_order_filename: /home/ubuntu/Notebooks/gmt_model_dt/pdr2021_ssFEM_modal_model.py.mat
+    reorder_RBM: false
+    damping_ratio: 2.0e-2 #0.5e-2 #
+  reduction: {}
+    #hsv_rel_threshold: 1.0e-3 # 
+    #start_idx: 3
