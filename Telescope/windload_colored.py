@@ -7,6 +7,7 @@ import s3fs
 from scipy.io import loadmat, savemat
 import logging
 import itertools,datetime
+import pickle
 
 logging.basicConfig()
 
@@ -599,9 +600,32 @@ class WindLoad:
         groups = self.state['Groups']
         IMLoads = {
             key: {
-                "values": groups[key]["u"].reshape(groups[key]["u"].shape[0],-1),
+                "values": groups[key]["u"].reshape(groups[key]["u"].shape[0],-1,order="F"),
                 "dimensions": np.prod(groups[key]["u"].shape[1:])
             } for key in groups}
         IMLoads.update({"time": self.state["Time"]})
         savemat(self.case+".mat",{"IMLoads":IMLoads})
 
+    def m2_dump(self):
+        groups = self.state['Groups']
+        IMLoads = {
+            key: {
+                "values": groups[key]["u"].reshape(groups[key]["u"].shape[0],-1,order="F"),
+                "dimensions": np.prod(groups[key]["u"].shape[1:])
+            } for key in groups}
+        IMLoads.update({"time": self.state["Time"]})
+        savemat(self.case+".mat",{"IMLoads":IMLoads})
+
+    def rust_dump(self):
+        data = {x:self.state['Groups'][x]['u'] for x in self.state['Groups']}
+        for key in data:
+            if np.ndim(data[key])>2:
+                data[key] = np.moveaxis(data[key],-1,1)
+            data[key] = data[key].reshape(data[key].shape[0],-1).tolist()
+        data.update({"time": self.state["Time"].tolist()})
+        filename = self.case+".pkl"
+        with open(filename,"wb") as f:
+            pickle.dump({'outputs':
+                         [{k:v} for (k,v) in wind.items() if k!='time'],
+                         'time':wind['time']},
+                        f)
