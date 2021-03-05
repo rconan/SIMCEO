@@ -501,7 +501,7 @@ class broker(threading.Thread):
 
         self.context = zmq.Context()
         self.socket = self.context.socket(zmq.REP)
-        self.address = "tcp://*:3650"
+        self.address = "tcp://*:3652"
         self.socket.bind(self.address)
         self.loop = True
         

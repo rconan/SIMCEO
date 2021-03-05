@@ -1,0 +1,2 @@
+This folder provides a SIMCEO simulation set-up that includes the fast TT control and the M2 FSM (PZT) control.
+There are to tuning optionz: `OAD` and `dev`. In the first, the M2 PZT and TT controllers (`TTDec_control_OAD.yaml` and `FSM_control_OAD.yaml`, respectively) are based on simple integral action to met OAD requirements. The second option employs more sophisticated controllers as described in the FSMS Study report authored by P. Thompson. The simulation uses the driver `pseudoTTsensor.py`, which is a linear approximation of the TT7 optical sensor.

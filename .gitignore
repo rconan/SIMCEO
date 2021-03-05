@@ -16,7 +16,10 @@ slprj
 etc/gmto*
 sandbox
 *.npy
+*.r2016a
 *.r2017a
+*.r2018a
+*.r2018b
 *.el
 *.npz
 *.bak
@@ -25,6 +28,24 @@ sandbox
 *.r2016a
 *.png
 *.svg
+*.zip
+timing
+
+# Generated from make server
+etc
+# Generated from make client
+*init__.py
+control.py
+dos.py
+driver.py
+CythonDrivers
+# Generated from make doc
+simceo_refman.pdf
+simceo_refman.toc
+simceo.tex
+
+
+# RR local stuff
 /M1
 *.zip
 ReconstructorM.pickle
@@ -37,3 +58,8 @@ SHAcO.pickle
 simceo_refman.toc
 dos/SHWFS_ES_M1S7Rzissue
 old_notebooks
+m1s*_bm_shapes.mat
+.vscode
+
+# Large files
+add_AcO_F.pickle

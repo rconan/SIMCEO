@@ -294,7 +294,7 @@ class broker:
         self.context = zmq.Context()
         self.logger.info("Connecting to server...")
         self.socket = self.context.socket(zmq.REQ)
-        self.socket.connect("tcp://{}:3650".format(IP))
+        self.socket.connect("tcp://{}:3652".format(IP))
         self._send_("Acknowledging connection from SIMCEO client!")
         print(self._recv_())
 
