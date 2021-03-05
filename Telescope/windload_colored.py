@@ -626,6 +626,6 @@ class WindLoad:
         filename = self.case+".pkl"
         with open(filename,"wb") as f:
             pickle.dump({'outputs':
-                         [{k:v} for (k,v) in wind.items() if k!='time'],
-                         'time':wind['time']},
+                         [{k:v} for (k,v) in data.items() if k!='time'],
+                         'time':data['time']},
                         f)
