@@ -75,55 +75,33 @@ drivers:
       #   size: 84  
       
 # Mount controller
-  AZ_fb_ssC:
+  Mount_Control:
     server: false
-    sampling_rate: 5
+    sampling_rate: 1
     inputs:
-      Az_SP:
-        size: 1
-      OSS_AzDrive_D:
-        lien: [FEM,OSS_AzEncoder_Angle]
-    outputs:
-      Az_Drive_cmd:
-        size: 1
-  EL_fb_ssC:
-    server: false
-    sampling_rate: 5
-    inputs:
-      El_SP:
-        size: 1
-      OSS_ElDrive_D:
-        lien: [FEM,OSS_ElEncoder_Angle]
-    outputs:
-      El_Drive_cmd:
-        size: 1
-  GIR_fb_ssC:
-    server: false
-    sampling_rate: 5
-    inputs:
-      GIR_SP:
-        size: 1
-      OSS_GIRDrive_D:
-        lien: [FEM,OSS_RotEncoder_Angle]
-    outputs:
-      GIR_Drive_cmd:
-        size: 1
-
-  # Mount drive (actuators)
-  Mount_Drv_PDR2021:
-    server: false
-    inputs:
-      AZ_cmd:
-        lien: [AZ_fb_ssC,Az_Drive_cmd]
-      EL_cmd:
-        lien: [EL_fb_ssC,El_Drive_cmd]
-      GIR_cmd:
-        lien: [GIR_fb_ssC,GIR_Drive_cmd]
+      Mount_SP:
+        size: 3
       OSS_AzDrive_D:
         lien: [FEM,OSS_AzEncoder_Angle]
       OSS_ElDrive_D:
           lien: [FEM,OSS_ElEncoder_Angle]
       OSS_GIRDrive_D:
+        lien: [FEM,OSS_RotEncoder_Angle]
+    outputs:
+      Mount_cmd:
+        size: 3
+
+  # Mount drive (actuators)
+  Mount_Drv_PDR2021:
+    server: false
+    inputs:
+      control_cmd:
+        lien: [Mount_Control,Mount_cmd]
+      OSS_AzDrive_Angle:
+        lien: [FEM,OSS_AzEncoder_Angle]
+      OSS_ElDrive_Angle:
+          lien: [FEM,OSS_ElEncoder_Angle]
+      OSS_GIRDrive_Angle:
         lien: [FEM,OSS_RotEncoder_Angle]
     shape: [1,20]
     split:
