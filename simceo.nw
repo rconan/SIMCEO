@@ -1768,13 +1768,14 @@ from dos import control
 # 1KHz rate drivers
 from CythonDrivers import Mount_Drives
 from CythonDrivers import Mount_Drv_PDR2021
+from CythonDrivers import Mount_Control
 from CythonDrivers import M1_HP_Dyn
 # Static mapping
 from CythonDrivers import M1HPloadcells
-# 2KHz rate drivers
-from CythonDrivers import MountDrives
-from CythonDrivers import M1hardpoints
-from CythonDrivers import M1LocalControl
+# 2KHz rate drivers (not used in this version)
+# from CythonDrivers import MountDrives
+# from CythonDrivers import M1hardpoints
+# from CythonDrivers import M1LocalControl
 # 100Hz rate drivers
 from CythonDrivers import M1SA_F_Control
 from CythonDrivers import M1OFL_Control
@@ -1818,16 +1819,17 @@ The folder [[CythonDrivers]] has the client drivers generated through a cythoniz
 # 1KHz rate drivers
 from .Mount_Drives import Mount_Drives
 from .Mount_Drv_PDR2021 import Mount_Drv_PDR2021
+from .Mount_Control import Mount_Control
 from .M1_HP_Dyn import M1_HP_Dyn
 # 100Hz rate drivers
 from .M1SA_F_Control import M1SA_F_Control  #M1 Control with support actuators
 from .M1OFL_Control import M1OFL_Control    #M1 Control (simplified version 6FM about CG)
 # Static mapping
 from .M1HPloadcells import M1HPloadcells
-# 2KHz rate drivers
-from .MountDrives import MountDrives
-from .M1hardpoints import M1hardpoints
-from .M1LocalControl import M1LocalControl
+# 2KHz rate drivers (not used in this version)
+# from .MountDrives import MountDrives
+# from .M1hardpoints import M1hardpoints
+# from .M1LocalControl import M1LocalControl
 @
 
 
