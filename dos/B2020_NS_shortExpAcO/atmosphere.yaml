@@ -3,6 +3,6 @@ L0: 25.0 # meter
 L: 25.5 # meter
 NXY_PUPIL: 769
 fov: 10.0 # arcmin
-duration: 20 # second
-N_DURATION: 5 # the total duration of the phase screens is duration x N_DURATION
-filename: atmosphere_20s.bin # if the file already exists it will be loaded otherwise it will be created
+duration: 10 # second
+N_DURATION: 2 # the total duration of the phase screens is duration x N_DURATION
+filename: atmosphere_10x2.bin # if the file already exists it will be loaded otherwise it will be created

@@ -8,6 +8,7 @@ simulation:
 drivers:
   # Atmosphere
   atmosphere: {}
+  
   # Wind load driver
   wind_loads:
     outputs:
@@ -25,7 +26,6 @@ drivers:
         size: 42
       MC_M2_lcl_force_6F:
         size: 42
-
   # Telescope structural model
   FEM:
     # FEM INPUTS
@@ -100,7 +100,7 @@ drivers:
       OSS_M1_lcl:
         sampling_rate: 5
         size: 42
-        logs: {decimation: 5}
+        #        logs: {decimation: 5}
       #M2 PZT
       MC_M2_PZT_S1_D:
         size: 6
@@ -120,11 +120,12 @@ drivers:
       MC_M2_lcl_6D:
         sampling_rate: 5
         size: 42
+        #        logs: {decimation: 5}
       #M1 surface
       M1_MODES:
         sampling_rate: 5
         size: [7, 27]
-        #   logs: {decimation: 10}
+        logs: {decimation: 5}
       # M1_Zernike_Coeffs:
       #   sampling_rate: 5
       #   size: 1330
@@ -205,11 +206,11 @@ drivers:
 
   # 3 48x48 SH-WFS probes
   wfs48:
-    delay: 4000 # samples := 2s
+    delay: 4000 # samples
     sampling_rate: 5 #10
     outputs:
       data:
-        sampling_rate: 5000 # x = 20000 = 20s/1e-3s = desired T/SIMCEO period
+        sampling_rate: 3000 # samples 
         size: 13824
 
   # TT controller + PZTcmd transformation      
@@ -223,12 +224,12 @@ drivers:
     outputs:
       M2_PZT_cmd:
         size: 21
-        logs: {decimation: 5}
+        #logs: {decimation: 5}
 
   SHAcO_qp:
     server: false
-    delay: 9000 # (wfs48 delay + sampling rate)
-    sampling_rate: 5000 # samples := 5s
+    delay: 7000 # (wfs48 delay + sampling rate)
+    sampling_rate: 3000 # samples := 5s
     inputs:
       wfs48 data:
         lien: [wfs48,data]
@@ -238,13 +239,13 @@ drivers:
     outputs:
       M1_RBM_cmd:
         size: 42
-        logs: {decimation: 5000}
+        logs: {decimation: 3000}
       M2_RBM_cmd:
         size: 42
-        logs: {decimation: 5000}
+        logs: {decimation: 3000}
       M1_BM_cmd:
         size: 189 # 7*27
-        logs: {decimation: 5000}
+        logs: {decimation: 3000}
 
   # M2 PZT Controller
   FSM_control_dev:
@@ -297,50 +298,35 @@ drivers:
     outputs:
       M1_HP_LC:
         size: 42
- 
-#  # M1-RBM Equal Shaping-Time and Magnitude (ETM) shaper
-# |-
-#  M1RBM_1stETM4:
-#    server: false
-#    sampling_rate: 1
-#    inputs:
-#      IN:
-#        lien: [SHAcO_qp,M1_RBM_cmd]
-#    outputs:
-#      OUT:
-#        size: 42
-#        logs: {decimation: 5}
 
-#  M1RBM_2ndETM4:
-#    server: false
-#    sampling_rate: 1
-#    inputs:
-#      IN:
-#        lien: [M1RBM_1stETM4,OUT]
-#    outputs:
-#      OUT:
-#        size: 42
-#        logs: {decimation: 5}
-# ||= ETM strategy does not look effective in avoiding TT bounces =||
-
+  # M1 RBM command input shape filter     
   m1RBM_IS_f:
     server: false
-    sampling_rate: 50 #5
+    sampling_rate: 50
     inputs:
       M1_RBM_cmd:
-#         lien: [M1RBM_2ndETM4,OUT]
         lien: [SHAcO_qp,M1_RBM_cmd]
     outputs:
       M1_RBM_cmd_F:
         size: 42
- 
+        #logs: {decimation: 50}
+
+  # M1 BM command input shape filter       
+  m1BM_IS_f:
+    server: false
+    sampling_rate: 50
+    inputs:
+      M1_BM_cmd:
+        lien: [SHAcO_qp,M1_BM_cmd]
+    outputs:
+      M1_BM_cmd_f:
+        size: 189 #27*7    
+
   # M1 HP dynamics model
   M1_HP_Dyn:
     server: false
     inputs:
       M1_RBM_cmd:
-#        size: 42
-#         lien: [M1RBM_2ndETM4,OUT]
         lien: [m1RBM_IS_f,M1_RBM_cmd_F]
 #        lien: [SHAcO_qp,M1_RBM_cmd]
     outputs:
@@ -354,18 +340,17 @@ drivers:
     server: false
     inputs:
       HP_LC:
-        lien: [M1HPloadcells, M1_HP_LC]
+        lien: [M1HPloadcells,M1_HP_LC]
       M1_BM_cmd:
-#        size: 189
-        lien: [SHAcO_qp,M1_BM_cmd]
-#        lien: [M1BM_ETM4,M1_BM_cmd_F]         
+#        lien: [SHAcO_qp,M1_BM_cmd]
+        lien: [m1BM_IS_f,M1_BM_cmd_f]
     split:
       indices_or_sections: [335, 670, 1005, 1340, 1675, 2010]
       axis: 1
     outputs:
       M1_Rel_F_S1:
         size: 335
-        logs: {decimation: 5}
+        #logs: {decimation: 10}
       M1_Rel_F_S2:
         size: 335
       M1_Rel_F_S3:
@@ -392,8 +377,10 @@ drivers:
     outputs:
       M1_Txyz:
         size: [7,3]
+        logs: {decimation: 5}
       M1_Rxyz:
         size: [7,3]
+        logs: {decimation: 5}
 
 # M1 CEO object driver
   M1:
@@ -408,15 +395,17 @@ drivers:
         lien: [FEM,M1_MODES]
 
   # M2 RBM input shaping filter 
-  m2RBM_IS_f: #_notch:
+  m2RBM_IS_f:
     server: false
-    sampling_rate: 50 #5
+    sampling_rate: 50
     inputs:
       M2_RBM_cmd:
         lien: [SHAcO_qp,M2_RBM_cmd]
     outputs:
       M2_RBM_cmd_f:
         size: 42
+        #logs: {decimation: 50}
+
 
   # M2 Positioner dynamics
   M2Pos_adhoc_DynModel:
@@ -424,9 +413,7 @@ drivers:
     sampling_rate: 5
     inputs:
       M2_RBM_cmd:
-#        size: 42
         lien: [m2RBM_IS_f,M2_RBM_cmd_f]        
-#        lien: [SHAcO_qp,M2_RBM_cmd]
     outputs:
       M2Pos_RBM:
         size: 42
@@ -480,16 +467,9 @@ drivers:
         sampling_rate: 10
         size: 7
         logs: {decimation: 10}  
-#      PSSn:
-#        sampling_rate: 50
-#        size: 1
-#        logs: {decimation: 50}
       tiptilt:
         size: 2
         logs: {decimation: 1}
       segment_tiptilt:
         size: 14
         logs: {decimation: 1}
-comments:
-
-      

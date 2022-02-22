@@ -1,5 +1,0 @@
-in_shaper_ETM4:
-  n_r: 42
-  res_freq: 10.5
-  zeta: 0.02
-  Ts: 1.0e-3
